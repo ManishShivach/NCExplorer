@@ -1,0 +1,18 @@
+# GUI Framework
+PyQt6~=6.9.0
+PyQt6_sip~=13.10.2
+
+# Geographic and Scientific Libraries
+cartopy>=0.20.0
+numpy>=1.21.0
+xarray>=0.20.0
+netCDF4>=1.5.8
+geopandas>=0.10.0
+shapely>=1.8.0
+matplotlib>=3.5.0
+pandas>=1.3.0
+rasterio>=1.4.0
+
+# Utilities
+pillow>=9.0.0
+requests>=2.27.0
