@@ -23,8 +23,8 @@ NCExplorer wraps the [Climate Data Operators (CDO)](https://code.mpimet.mpg.de/p
 ## Quick start
 
 ```bash
-git clone https://github.com/ManishShivach/NCproject.git
-cd NCproject
+git clone https://github.com/ManishShivach/NCExplorer.git
+cd NCExplorer
 
 python -m venv .venv
 source .venv/bin/activate     # Windows: .venv\Scripts\activate
