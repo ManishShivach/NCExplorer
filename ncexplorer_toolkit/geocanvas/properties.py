@@ -8,11 +8,17 @@ the core property classes, property manager, and UI widgets.
 
 import os
 import json
+import logging
 import datetime
 from typing import Any, Dict, List, Optional, Union
 from PyQt6.QtWidgets import *
 from PyQt6.QtCore import QObject, pyqtSignal, Qt, QTimer
 from PyQt6.QtGui import QColor, QPalette, QFont
+
+from . import colormaps as colormap_registry
+from ..utils import timeaxis
+
+logger = logging.getLogger(__name__)
 
 # Core Property Classes
 class LayerMetadata:
@@ -132,6 +138,9 @@ class LayerStyleProperties:
         self.vmin = None  # Minimum value for colormap
         self.vmax = None  # Maximum value for colormap
         self.interpolation = "nearest"  # nearest, bilinear, bicubic
+        # Centre a diverging colour scale on zero, so equal anomalies of either
+        # sign read as equally strong. An explicit vmin/vmax overrides it.
+        self.diverging_center_zero = False
 
         # Advanced styling
         self.blend_mode = "normal"  # normal, multiply, screen, etc.
@@ -157,6 +166,7 @@ class LayerStyleProperties:
             "vmin": self.vmin,
             "vmax": self.vmax,
             "interpolation": self.interpolation,
+            "diverging_center_zero": self.diverging_center_zero,
             "blend_mode": self.blend_mode,
             "brightness": self.brightness,
             "contrast": self.contrast,
@@ -189,7 +199,13 @@ class NetCDFProperties:
         self.variables = []  # List of available variables
         self.current_variable = None
         self.time_dimension = None
-        self.time_values = []  # List of time values
+        self.time_values = []  # Raw numeric time values; selection indexes into this
+        # Display-only labels parallel to time_values, decoded by
+        # utils/timeaxis.py. Kept separate so time_values stays numeric for the
+        # index-based isel() selection and for JSON serialization below.
+        self.time_labels = []  # List of formatted date strings
+        self.time_units = ""  # CF "units" attribute of the time variable
+        self.time_calendar = ""  # CF "calendar" attribute of the time variable
         self.current_time_index = 0
         self.band_dimension = None
         self.band_names = []  # List of band names
@@ -207,6 +223,9 @@ class NetCDFProperties:
             "current_variable": self.current_variable,
             "time_dimension": self.time_dimension,
             "time_values": [str(t) for t in self.time_values],  # Convert to strings for JSON
+            "time_labels": list(self.time_labels),
+            "time_units": self.time_units,
+            "time_calendar": self.time_calendar,
             "current_time_index": self.current_time_index,
             "band_dimension": self.band_dimension,
             "band_names": self.band_names,
@@ -233,10 +252,14 @@ class NetCDFProperties:
         return (0, len(self.band_names) - 1) if self.band_names else (0, 0)
 
     def get_current_time_value(self):
-        """Get current time value."""
+        """Get current raw time value."""
         if 0 <= self.current_time_index < len(self.time_values):
             return self.time_values[self.current_time_index]
         return None
+
+    def get_current_time_label(self) -> str:
+        """Get the current timestep as a date, or as the raw value if undecodable."""
+        return timeaxis.label_at(self, self.current_time_index)
 
     def get_current_band_name(self) -> str:
         """Get current band name."""
@@ -439,7 +462,7 @@ class LayerPropertyManager(QObject):
                 return True
 
         except Exception as e:
-            print(f"Error updating property {property_path}: {e}")
+            logger.error("Error updating property %s: %s", property_path, e, exc_info=True)
             return False
         finally:
             self._property_locks[layer_name] = False
@@ -467,7 +490,7 @@ class LayerPropertyManager(QObject):
             return obj
 
         except Exception as e:
-            print(f"Error getting property {property_path}: {e}")
+            logger.error("Error getting property %s: %s", property_path, e, exc_info=True)
             return None
 
     def get_layer_info_summary(self, layer_name: str) -> Dict[str, Any]:
@@ -496,6 +519,9 @@ class LayerPropertyManager(QObject):
                 "current_variable": layer_prop.netcdf.current_variable,
                 "time_steps": len(layer_prop.netcdf.time_values),
                 "current_time": layer_prop.netcdf.current_time_index,
+                "current_time_label": timeaxis.label_at(
+                    layer_prop.netcdf, layer_prop.netcdf.current_time_index
+                ),
                 "bands": len(layer_prop.netcdf.band_names),
                 "current_band": layer_prop.netcdf.current_band
             })
@@ -514,7 +540,7 @@ class LayerPropertyManager(QObject):
             return True
 
         except Exception as e:
-            print(f"Error saving properties: {e}")
+            logger.error("Error saving properties to %s: %s", filepath, e, exc_info=True)
             return False
 
     def load_properties_from_file(self, filepath: str) -> bool:
@@ -531,7 +557,7 @@ class LayerPropertyManager(QObject):
             return True
 
         except Exception as e:
-            print(f"Error loading properties: {e}")
+            logger.error("Error loading properties from %s: %s", filepath, e, exc_info=True)
             return False
 
     def reset_all_properties(self):
@@ -813,12 +839,10 @@ class StyleTabWidget(PropertyTabWidget):
         self.raster_group = QGroupBox("Raster Properties")
         raster_layout = QFormLayout(self.raster_group)
 
-        # Colormap
+        # Colormap. The list comes from geocanvas.colormaps so this widget and
+        # the symbology manager can never advertise different sets.
         self.colormap_combo = QComboBox()
-        # Add common colormaps
-        colormaps = ["viridis", "plasma", "inferno", "magma", "cividis", "gray", "hot", "cool",
-                    "spring", "summer", "autumn", "winter", "bone", "copper", "terrain"]
-        self.colormap_combo.addItems(colormaps)
+        self._populate_colormap_combo()
         self.colormap_combo.setEditable(True)
         self.colormap_combo.currentTextChanged.connect(
             lambda text: self.emit_property_changed("style.colormap", text)
@@ -830,6 +854,21 @@ class StyleTabWidget(PropertyTabWidget):
             lambda checked: self.emit_property_changed("style.reverse_colormap", checked)
         )
         raster_layout.addRow("Reverse Colormap:", self.reverse_colormap_check)
+
+        self.diverging_center_check = QCheckBox()
+        self.diverging_center_check.setToolTip(
+            "Centre the colour scale on zero, so equal positive and negative "
+            "anomalies read as equally strong. Only meaningful for diverging "
+            "colormaps; an explicit Min/Max below overrides it."
+        )
+        self.diverging_center_check.toggled.connect(
+            lambda checked: self.emit_property_changed("style.diverging_center_zero", checked)
+        )
+        raster_layout.addRow("Center On Zero:", self.diverging_center_check)
+
+        # Connected after the checkbox exists so the gate can be applied.
+        self.colormap_combo.currentTextChanged.connect(self._sync_diverging_checkbox)
+        self._sync_diverging_checkbox()
 
         # Value range controls
         value_range_layout = QHBoxLayout()
@@ -915,6 +954,32 @@ class StyleTabWidget(PropertyTabWidget):
 
         # Add stretch to push everything to the top
         layout.addStretch()
+
+    def _populate_colormap_combo(self):
+        """Fill the colormap combo from the registry, one section per group.
+
+        Each group gets a separator and a disabled caption item, so the families
+        (Diverging, Oceanography, …) are visible without becoming selectable.
+        """
+        model = self.colormap_combo.model()
+        groups = colormap_registry.available_colormaps()
+
+        for position, (group, names) in enumerate(groups.items()):
+            if position:
+                self.colormap_combo.insertSeparator(self.colormap_combo.count())
+
+            self.colormap_combo.addItem(group)
+            caption = model.item(self.colormap_combo.count() - 1)
+            if caption is not None:
+                caption.setEnabled(False)
+
+            self.colormap_combo.addItems(names)
+
+    def _sync_diverging_checkbox(self, name=None):
+        """Offer zero-centring only for colormaps that have a real midpoint."""
+        if name is None:
+            name = self.colormap_combo.currentText()
+        self.diverging_center_check.setEnabled(colormap_registry.is_diverging(name))
 
     def _create_adjustment_slider(self, property_name: str):
         """Create a slider for adjustment properties (-1.0 to 1.0)."""
@@ -1044,6 +1109,8 @@ class StyleTabWidget(PropertyTabWidget):
         # Raster properties
         self.colormap_combo.setCurrentText(style.colormap)
         self.reverse_colormap_check.setChecked(style.reverse_colormap)
+        self.diverging_center_check.setChecked(style.diverging_center_zero)
+        self._sync_diverging_checkbox()
 
         # Value range
         if style.vmin is not None:
@@ -1103,6 +1170,9 @@ class StyleTabWidget(PropertyTabWidget):
         self.emit_property_changed("style.marker_size", self.marker_size_spin.value())
         self.emit_property_changed("style.colormap", self.colormap_combo.currentText())
         self.emit_property_changed("style.reverse_colormap", self.reverse_colormap_check.isChecked())
+        self.emit_property_changed(
+            "style.diverging_center_zero", self.diverging_center_check.isChecked()
+        )
         self.emit_property_changed(
             "style.vmin",
             None if self.vmin_spin.value() == self.vmin_spin.minimum() else self.vmin_spin.value()
@@ -1173,12 +1243,26 @@ class DimensionsTabWidget(PropertyTabWidget):
 
 
 class NetCDFTabWidget(PropertyTabWidget):
-    """Read-only tab widget for NetCDF-specific information."""
+    """NetCDF-specific information. Read-only apart from the variable picker."""
 
     def setup_ui(self):
         layout = QFormLayout(self)
 
+        # A combo rather than a label, because the choice was being made
+        # silently. A file with two data variables is drawn as its first one,
+        # and most of the climate indices write two — eca_cdd writes the index
+        # *and* a count of qualifying periods. There was no way to see the
+        # second, let alone display it, without saving a project and reopening
+        # it. The label is kept for the single-variable case, where a combo
+        # would only suggest a choice that does not exist.
+        self.variable_combo = QComboBox()
+        self.variable_combo.setToolTip(
+            "Which variable this layer draws. A CDO result can hold more than "
+            "one; the map, the statistics panel and the plot all follow this."
+        )
+        self.variable_combo.currentTextChanged.connect(self._on_variable_changed)
         self.variable_label = QLabel("N/A")
+
         self.time_label = QLabel("N/A")
         self.band_label = QLabel("N/A")
         self.coord_label = QLabel("N/A")
@@ -1191,18 +1275,83 @@ class NetCDFTabWidget(PropertyTabWidget):
         self.attributes_text.setReadOnly(True)
         self.attributes_text.setMaximumHeight(150)
 
-        layout.addRow("Variable:", self.variable_label)
+        layout.addRow("Variable:", self.variable_combo)
+        layout.addRow("", self.variable_label)
         layout.addRow("Time:", self.time_label)
         layout.addRow("Band:", self.band_label)
         layout.addRow("Coordinates:", self.coord_label)
         layout.addRow("Dimensions:", self.dimensions_text)
         layout.addRow("Attributes:", self.attributes_text)
 
+    def _on_variable_changed(self, name: str):
+        if name:
+            self.emit_property_changed("netcdf.current_variable", name)
+
+    #: Variable names that do not say what they hold, and what they hold.
+    #:
+    #: ``timcor`` writes its correlation beside a variable called ``pvalue``,
+    #: so the picker offers "tas" and "pvalue" as though they were two fields
+    #: of the same kind. They are not, and the name is actively misleading:
+    #: measured against the t-distribution on 162 gridpoints (CDO 2.6.3), the
+    #: values run from ~0.5 where the correlation is zero to 1.0 where it is
+    #: perfect. It is the confidence level, not a p-value — so the conventional
+    #: reading, "significant below 0.05", selects nothing at all.
+    #:
+    #: The item text is deliberately left as the raw variable name: it is the
+    #: value ``currentTextChanged`` emits and the name every layer, dataset and
+    #: exported file uses, and a picker that shows something a user cannot find
+    #: in their own file trades one confusion for another. The explanation goes
+    #: in the tooltip and in the line below the picker instead.
+    _VARIABLE_NOTES = {
+        "pvalue": (
+            "Significance of the correlation, not a p-value despite the name: "
+            "it runs from about 0.5 where the correlation is zero to 1.0 where "
+            "it is perfect, so high means significant. Written by timcor when "
+            "the input holds a single field per timestep."
+        ),
+    }
+
+    def _show_variables(self, netcdf) -> None:
+        """The picker when there is a choice, a plain label when there is not."""
+        variables = list(getattr(netcdf, "variables", None) or [])
+        current = getattr(netcdf, "current_variable", None) or (
+            variables[0] if variables else "")
+
+        multiple = len(variables) > 1
+        self.variable_combo.setVisible(multiple)
+        # The label is the picker's caption when there is a choice and the
+        # answer itself when there is not, so it is shown whenever it has
+        # something to say rather than only in the single-variable case.
+        notes = [f"{name}: {self._VARIABLE_NOTES[name]}"
+                 for name in variables if name in self._VARIABLE_NOTES]
+        self.variable_label.setVisible(bool(notes) or not multiple)
+
+        if multiple:
+            self.variable_combo.blockSignals(True)
+            self.variable_combo.clear()
+            self.variable_combo.addItems(variables)
+            for index, name in enumerate(variables):
+                note = self._VARIABLE_NOTES.get(name)
+                if note:
+                    self.variable_combo.setItemData(
+                        index, note, Qt.ItemDataRole.ToolTipRole)
+            if current in variables:
+                self.variable_combo.setCurrentText(current)
+            self.variable_combo.blockSignals(False)
+            self.variable_label.setText("\n".join(notes))
+            self.variable_label.setWordWrap(True)
+            self.variable_label.setStyleSheet("color: gray; font-size: 11px;")
+        else:
+            self.variable_label.setText(current or "N/A")
+            self.variable_label.setStyleSheet("")
+
     def load_properties(self):
         self._updating = True
         netcdf = self.layer_property.netcdf
 
         if not netcdf:
+            self.variable_combo.setVisible(False)
+            self.variable_label.setVisible(True)
             self.variable_label.setText("Not a NetCDF layer")
             self.time_label.setText("N/A")
             self.band_label.setText("N/A")
@@ -1212,13 +1361,15 @@ class NetCDFTabWidget(PropertyTabWidget):
             self._updating = False
             return
 
-        self.variable_label.setText(netcdf.current_variable or ", ".join(netcdf.variables) or "N/A")
+        self._show_variables(netcdf)
 
         if netcdf.time_values:
-            current_time = netcdf.get_current_time_value()
+            # A real date when the axis could be decoded, the raw value when it
+            # could not — see utils/timeaxis.py.
+            current_time = timeaxis.label_at(netcdf, netcdf.current_time_index)
             self.time_label.setText(
                 f"{netcdf.time_dimension}: {netcdf.current_time_index + 1}/{len(netcdf.time_values)}"
-                + (f" ({current_time})" if current_time is not None else "")
+                + (f" ({current_time})" if current_time else "")
             )
         else:
             self.time_label.setText("No time dimension")
@@ -1281,7 +1432,7 @@ class LayerPropertyEditor(QWidget):
         self.empty_label.setVisible(not enabled)
 
     def _disconnect_tab_signals(self):
-        for tab in (self.metadata_tab,):
+        for tab in (self.metadata_tab, self.netcdf_tab):
             if tab is not None:
                 try:
                     tab.property_changed.disconnect(self.property_changed)
@@ -1297,6 +1448,10 @@ class LayerPropertyEditor(QWidget):
         self.netcdf_tab = NetCDFTabWidget(layer_property, self)
 
         self.metadata_tab.property_changed.connect(self.property_changed)
+        # The variable picker is the only editable thing on the NetCDF tab, and
+        # it is worthless unwired: a two-variable result would list both and
+        # keep drawing the first.
+        self.netcdf_tab.property_changed.connect(self.property_changed)
 
         self.tabs.addTab(self.metadata_tab, "Metadata")
         self.tabs.addTab(self.dimensions_tab, "Dimensions")

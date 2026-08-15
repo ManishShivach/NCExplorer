@@ -2,13 +2,19 @@
 Enhanced Shapefile Display Manager
 """
 
+import logging
 import os
+
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection, PatchCollection
 from matplotlib.patches import Polygon
 import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
+
+from .vector_io import read_vector_file
+
+logger = logging.getLogger(__name__)
 
 
 class ShapefileDisplayManager(QObject):
@@ -38,7 +44,7 @@ class ShapefileDisplayManager(QObject):
                 raise ValueError("Incomplete shapefile - missing required components")
 
             # Load shapefile with geopandas
-            gdf = gpd.read_file(filepath)
+            gdf = read_vector_file(filepath)
 
             if layer_name is None:
                 layer_name = os.path.splitext(os.path.basename(filepath))[0]
@@ -67,12 +73,12 @@ class ShapefileDisplayManager(QObject):
 
         for ext in required_extensions:
             if not os.path.exists(base_path + ext):
-                print(f"Warning: Missing required file: {base_path + ext}")
+                logger.warning("Missing required shapefile component: %s", base_path + ext)
                 return False
 
         # Check for a projection file (optional but recommended)
         if not os.path.exists(base_path + '.prj'):
-            print(f"Warning: Missing projection file: {base_path}.prj")
+            logger.warning("Missing projection file: %s.prj", base_path)
 
         return True
 

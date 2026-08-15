@@ -12,7 +12,7 @@ Public surface:
 
     Lazy (loaded on first attribute access — keeps Qt / Cartopy / Rasterio
     out of the import graph until something actually needs them)
-        BasemapManager, GeoCanvas, LayerManager, NetCDFManager,
+        GeoCanvas, LayerManager,
         LayerPropertyManager, LayerStyleProperties, LayerMetadata,
         LayerDimensions, LayerProperty, NetCDFProperties,
         SymbologyManager, TempFileStore,
@@ -44,10 +44,10 @@ from .core.nc_integration import (
 
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     # geocanvas
-    "BasemapManager":       (".geocanvas.basemap",    "BasemapManager"),
     "GeoCanvas":            (".geocanvas.canvas",     "GeoCanvas"),
     "LayerManager":         (".geocanvas.layers",     "LayerManager"),
-    "NetCDFManager":        (".geocanvas.netcdf",     "NetCDFManager"),
+    # No "NetCDFManager": geocanvas/netcdf.py held one that could not run —
+    # see the note in geocanvas/__init__.py. GeoCanvas has the working copies.
     "LayerPropertyManager": (".geocanvas.properties", "LayerPropertyManager"),
     "LayerStyleProperties": (".geocanvas.properties", "LayerStyleProperties"),
     "LayerMetadata":        (".geocanvas.properties", "LayerMetadata"),

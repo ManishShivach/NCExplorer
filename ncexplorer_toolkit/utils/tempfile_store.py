@@ -8,7 +8,10 @@ from typing import List, Optional
 class TempFileStore:
     """Manage temporary files created by the wrapper with graceful cleanup."""
 
-    def __init__(self, base_dir: Optional[str] = None, tag: str = "cdo_temp") -> None:
+    # The tag becomes the prefix of every temporary file name, and those names
+    # travel into the logged command lines — so it is kept neutral, matching the
+    # tags the compare and mask dialogs already pass.
+    def __init__(self, base_dir: Optional[str] = None, tag: str = "ncexplorer_temp") -> None:
         self.base_dir = Path(base_dir or tempfile.gettempdir())
         self._tag = tag
         self._files: List[Path] = []

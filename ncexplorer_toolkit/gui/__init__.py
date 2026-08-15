@@ -18,6 +18,8 @@ from importlib import import_module
 # needed in the same file.
 _LAZY: dict[str, tuple[str, str]] = {
     "NCExplorerOperatorGUI": (".main_window",   "NCExplorerOperatorGUI"),
+    "NCExplorerSplash":      (".splash",        "NCExplorerSplash"),
+    "show_splash":           (".splash",        "show_splash"),
     "MenuBar":               (".menubar",       "MenuBar"),
     "NCExplorerToolbar":     (".toolbar",       "NCExplorerToolbar"),
     "QIntValidator":         (".widgets",       "QIntValidator"),

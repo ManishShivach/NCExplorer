@@ -1,244 +1,175 @@
-"""
-Splash screen for GIS Toolkit application startup
-Provides visual feedback during application loading
+"""Standalone preview of the NCExplorer startup splash.
+
+Run it to see exactly what a user sees while the application loads:
+
+    python splash_screen.py             # play the startup sequence once
+    python splash_screen.py --hold      # stop at 100% and stay up until closed
+    python splash_screen.py --step 1.0  # seconds per step (default 0.45)
+
+Click the splash to dismiss it early — QSplashScreen closes on mouse press.
+
+The drawing itself lives in ``ncexplorer_toolkit/gui/splash.py``, which is what
+``main.py`` shows and what the frozen application ships; this module only
+wraps it.  That split is deliberate: a preview that draws its own copy of the
+splash stops being a preview the first time the real one changes.
+
+The manager API below (``create_splash_screen``, ``next_step``,
+``close_splash``) exists for scripts that want to drive the splash themselves.
 """
 
+from __future__ import annotations
+
+import argparse
 import sys
-from PyQt6.QtWidgets import QSplashScreen
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QPixmap, QFont, QPainter, QColor, QLinearGradient, QBrush
+from pathlib import Path
 
+# Allow `python splash_screen.py` from any working directory.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-class GISSplashScreen(QSplashScreen):
-    """
-    Professional splash screen for GIS Toolkit
-    Shows loading progress and status messages
-    """
+from PyQt6.QtCore import QTimer                            # noqa: E402
+from PyQt6.QtWidgets import QApplication                   # noqa: E402
 
-    def __init__(self):
-        # Create a custom pixmap for the splash screen
-        pixmap = self.create_splash_pixmap()
-        super().__init__(pixmap)
+from ncexplorer_toolkit.__version__ import APP_NAME        # noqa: E402
+from ncexplorer_toolkit.gui.splash import NCExplorerSplash  # noqa: E402
+from ncexplorer_toolkit.resources.branding import app_icon  # noqa: E402
 
-        # Configure window properties
-        self.setWindowFlags(
-            Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.SplashScreen
-        )
+__all__ = [
+    "NCExplorerSplash",
+    "SplashScreenManager",
+    "create_splash_screen",
+    "show_splash_with_timer",
+    "LOADING_STEPS",
+]
 
-        # Initialize progress tracking
-        self.progress_value = 0
-        self.max_progress = 100
-
-        # Show an initial message
-        self.show_message("Initializing GIS Toolkit...", 0)
-
-    @staticmethod
-    def create_splash_pixmap():
-        """Create a professional-looking splash screen background"""
-        width, height = 500, 300
-        pixmap = QPixmap(width, height)
-
-        # Create a painter for custom drawing
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # Create a gradient background
-        gradient = QLinearGradient(0, 0, 0, height)
-        gradient.setColorAt(0, QColor(25, 35, 45))  # Dark blue-gray
-        gradient.setColorAt(0.5, QColor(45, 65, 85))  # Medium blue
-        gradient.setColorAt(1, QColor(25, 35, 45))  # Dark blue-gray
-
-        painter.fillRect(0, 0, width, height, QBrush(gradient))
-
-        # Add title text
-        painter.setPen(QColor(255, 255, 255))
-        title_font = QFont("Arial", 24, QFont.Weight.Bold)
-        painter.setFont(title_font)
-        painter.drawText(50, 80, "GIS Toolkit")
-
-        # Add subtitle
-        subtitle_font = QFont("Arial", 12)
-        painter.setFont(subtitle_font)
-        painter.setPen(QColor(200, 200, 200))
-        painter.drawText(50, 110, "Climate Data Operators GUI")
-
-        # Add version info
-        version_font = QFont("Arial", 10)
-        painter.setFont(version_font)
-        painter.setPen(QColor(180, 180, 180))
-        painter.drawText(50, 140, "Version 1.0")
-
-        # Add decorative elements
-        painter.setPen(QColor(70, 130, 180))
-        painter.drawLine(50, 160, 450, 160)
-
-        painter.end()
-        return pixmap
-
-    def show_message(self, message, progress=None):
-        """
-        Show a loading message with optional progress
-
-        Args:
-            message: Status message to display
-            progress: Progress value (0-100)
-        """
-        if progress is not None:
-            self.progress_value = progress
-            progress_text = f" ({progress}%)"
-        else:
-            progress_text = ""
-
-        # Show a message with progress
-        display_message = f"{message}{progress_text}"
-
-        super().showMessage(
-            display_message,
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignLeft,
-            QColor(255, 255, 255)
-        )
-
-        # Force immediate update
-        self.repaint()
-
-    def update_progress(self, value, message=""):
-        """Update progress bar and message"""
-        self.progress_value = min(value, self.max_progress)
-        if message:
-            self.show_message(message, self.progress_value)
-        else:
-            self.show_message("Loading...", self.progress_value)
-
-    def paintEvent(self, event):
-        """Custom paint event to add a progress bar"""
-        super().paintEvent(event)
-
-        # Draw the progress bar
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # Progress bar dimensions
-        bar_width = 400
-        bar_height = 8
-        bar_x = 50
-        bar_y = 250
-
-        # Draw a progress bar background
-        painter.setBrush(QBrush(QColor(100, 100, 100)))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(bar_x, bar_y, bar_width, bar_height, 4, 4)
-
-        # Draw progress bar fill
-        if self.progress_value > 0:
-            fill_width = int((self.progress_value / self.max_progress) * bar_width)
-            painter.setBrush(QBrush(QColor(70, 130, 180)))
-            painter.drawRoundedRect(bar_x, bar_y, fill_width, bar_height, 4, 4)
-
-        painter.end()
+#: The captions main.py drives the real splash with, in order, so the preview
+#: shows the sequence a user actually gets.  Reproduced rather than imported:
+#: the real ones are emitted from the middle of startup — some from inside the
+#: main window's constructor — and there is no list to import.
+LOADING_STEPS: list[tuple[str, int]] = [
+    (f"Starting {APP_NAME}…", 0),
+    ("Loading the operator catalogue…", 10),
+    ("Loading the map libraries…", 20),
+    ("Building the interface…", 38),
+    ("Locating CDO…", 47),
+    ("Building menus and toolbars…", 53),
+    ("Drawing the map canvas…", 64),
+    ("Adding the docks…", 86),
+    ("Loading the analysis panels…", 94),
+    ("Ready", 100),
+]
 
 
 class SplashScreenManager:
-    """
-    Manages splash screen lifecycle and progress updates
-    """
+    """Owns a splash screen and walks it through the loading steps."""
 
-    def __init__(self):
-        self.splash = None
-        self.loading_steps = [
-            ("Loading Qt framework...", 10),
-            ("Initializing GIS integration...", 25),
-            ("Setting up GeoCanvas...", 45),
-            ("Preparing map canvas...", 65),
-            ("Creating user interface...", 80),
-            ("Finalizing startup...", 95),
-            ("Ready!", 100)
-        ]
+    def __init__(self, steps: list[tuple[str, int]] | None = None) -> None:
+        self.splash: NCExplorerSplash | None = None
+        self.loading_steps = list(steps if steps is not None else LOADING_STEPS)
         self.current_step = 0
 
-    def show_splash(self):
-        """Show the splash screen"""
-        self.splash = GISSplashScreen()
+    def show_splash(self) -> NCExplorerSplash:
+        """Create, show and paint the splash."""
+        self.splash = NCExplorerSplash()
         self.splash.show()
+        # Nothing has entered the event loop yet, so pump it once by hand or
+        # the window is mapped but never painted.
+        QApplication.processEvents()
         return self.splash
 
-    def update_loading_step(self, step_index=None):
-        """Update to the next loading step or specific step"""
+    def update_loading_step(self, step_index: int | None = None) -> bool:
+        """Show one step; returns False once the sequence is exhausted."""
         if step_index is not None:
             self.current_step = step_index
+        if self.splash is None or self.current_step >= len(self.loading_steps):
+            return False
 
-        if self.splash and self.current_step < len(self.loading_steps):
-            message, progress = self.loading_steps[self.current_step]
-            self.splash.update_progress(progress, message)
-            self.current_step += 1
+        message, progress = self.loading_steps[self.current_step]
+        self.splash.set_progress(progress, message)
+        self.current_step += 1
+        return True
 
-    def next_step(self):
-        """Move to the next loading step"""
-        self.update_loading_step()
+    def next_step(self) -> bool:
+        return self.update_loading_step()
 
-    def set_custom_message(self, message, progress=None):
-        """Set a custom loading message"""
-        if self.splash:
-            self.splash.show_message(message, progress)
+    def set_custom_message(self, message: str, progress: int | None = None) -> None:
+        if self.splash is not None:
+            self.splash.set_progress(
+                self.splash.progress if progress is None else progress,
+                message,
+            )
 
-    def close_splash(self, main_window=None):
-        """Close the splash screen"""
-        if self.splash:
-            if main_window:
-                self.splash.finish(main_window)
-            else:
-                self.splash.close()
-            self.splash = None
+    def close_splash(self, main_window=None) -> None:
+        if self.splash is None:
+            return
+        if main_window is not None:
+            # Waits for the window to be exposed, so there is no flash of
+            # desktop between the two.
+            self.splash.finish(main_window)
+        else:
+            self.splash.close()
+        self.splash = None
 
 
-# Convenience functions for easy integration
-def create_splash_screen():
-    """Create and return a splash screen manager"""
+def create_splash_screen() -> SplashScreenManager:
+    """A manager with the standard loading steps, nothing shown yet."""
     return SplashScreenManager()
 
 
-def show_splash_with_timer(app, duration=3000):
-    """
-    Show a splash screen for a specific duration
-
-    Args:
-        app: QApplication instance
-        duration: Duration in milliseconds
-    """
-    splash_manager = create_splash_screen()
-    splash = splash_manager.show_splash()
-
-    # Auto-close after duration
+def show_splash_with_timer(app: QApplication, duration: int = 3000) -> SplashScreenManager:
+    """Show the splash and close it after ``duration`` milliseconds."""
+    manager = create_splash_screen()
+    splash = manager.show_splash()
     QTimer.singleShot(duration, splash.close)
+    return manager
 
-    return splash_manager
 
-
-# Example usage for testing
-if __name__ == "__main__":
-    from PyQt6.QtWidgets import QApplication
-
+def _preview(step_seconds: float, hold: bool) -> int:
     app = QApplication(sys.argv)
+    app.setApplicationName(APP_NAME)
+    icon = app_icon()
+    if not icon.isNull():
+        app.setWindowIcon(icon)
 
-    # Create a splash screen manager
-    splash_manager = create_splash_screen()
-    splash = splash_manager.show_splash()
+    manager = create_splash_screen()
+    manager.show_splash()
+
+    interval = max(1, int(step_seconds * 1000))
+    timer = QTimer()
+
+    def advance() -> None:
+        if manager.next_step():
+            return
+        timer.stop()
+        if hold:
+            print("At 100% — close the splash (click it) to exit.")
+            return
+        # Let the finished bar be seen before it disappears.
+        QTimer.singleShot(900, app.quit)
+
+    timer.timeout.connect(advance)
+    timer.start(interval)
+
+    # A splash screen is not a normal top-level window, so closing it does not
+    # emit lastWindowClosed and the preview would hang with nothing on screen.
+    # Watch its visibility instead; the click-to-dismiss path lands here too.
+    watchdog = QTimer()
+    watchdog.timeout.connect(
+        lambda: None if (manager.splash and manager.splash.isVisible()) else app.quit()
+    )
+    watchdog.start(200)
+
+    return app.exec()
 
 
-    # Simulate loading steps
-    def simulate_loading():
-        import time
-        for i in range(7):
-            time.sleep(0.5)  # Simulate work
-            splash_manager.next_step()
-            app.processEvents()  # Keep UI responsive
-
-        # Close splash after demo
-        QTimer.singleShot(1000, splash.close)
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--step", type=float, default=0.45, metavar="SECONDS",
+                        help="how long each loading step is shown (default 0.45)")
+    parser.add_argument("--hold", action="store_true",
+                        help="stay on screen at 100%% instead of closing")
+    args = parser.parse_args()
+    return _preview(args.step, args.hold)
 
 
-    # Start simulation
-    QTimer.singleShot(500, simulate_loading)
-
-    sys.exit(app.exec())
+if __name__ == "__main__":
+    sys.exit(main())

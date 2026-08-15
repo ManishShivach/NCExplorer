@@ -5,9 +5,16 @@ Symbology Manager for GeoCanvas
 Handles symbol styling and visual representation of layers.
 """
 
+import logging
+
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_hex
 from PyQt6.QtCore import QObject, pyqtSignal
+
+from . import colormaps
+
+logger = logging.getLogger(__name__)
+
 
 class SymbologyManager(QObject):
     """Manager for layer symbology and styling."""
@@ -99,9 +106,8 @@ class SymbologyManager(QObject):
 
         elif layer_type in ['raster', 'netcdf']:
             # Raster styling
-            cmap = style.colormap
-            if style.reverse_colormap:
-                cmap = f"{cmap}_r"
+            cmap, _ok = colormaps.resolve_colormap(style.colormap)
+            cmap = colormaps.apply_reverse(cmap, style.reverse_colormap)
 
             mpl_style.update({
                 'cmap': cmap,
@@ -109,10 +115,15 @@ class SymbologyManager(QObject):
                 'interpolation': style.interpolation
             })
 
-            if style.vmin is not None:
-                mpl_style['vmin'] = style.vmin
-            if style.vmax is not None:
-                mpl_style['vmax'] = style.vmax
+            # An explicit vmin/vmax wins; otherwise a diverging scale may be
+            # auto-centred on zero from the layer's precomputed statistics.
+            clim = colormaps.raster_clim(style, layer_prop.metadata.statistics)
+            if clim is not None:
+                vmin, vmax = clim
+                if vmin is not None:
+                    mpl_style['vmin'] = vmin
+                if vmax is not None:
+                    mpl_style['vmax'] = vmax
 
         return mpl_style
 
@@ -184,7 +195,7 @@ class SymbologyManager(QObject):
                     artist.set_clim(vmin=vmin, vmax=vmax)
 
         except Exception as e:
-            print(f"Warning: Could not apply some style properties to artist: {e}")
+            logger.warning("Could not apply some style properties to artist: %s", e)
 
     def get_color_palette(self, name: str = 'default', n_colors: int = 10):
         """Get a color palette for styling multiple layers.
@@ -273,14 +284,8 @@ class SymbologyManager(QObject):
 
     @staticmethod
     def get_available_colormaps():
-        """Get list of available matplotlib colormaps."""
-        return [
-            'viridis', 'plasma', 'inferno', 'magma', 'cividis',
-            'gray', 'hot', 'cool', 'spring', 'summer', 'autumn', 'winter',
-            'bone', 'copper', 'terrain', 'rainbow', 'jet', 'hsv',
-            'Spectral', 'coolwarm', 'seismic', 'RdYlBu', 'RdYlGn',
-            'tab10', 'tab20', 'Set1', 'Set2', 'Set3', 'Pastel1', 'Pastel2'
-        ]
+        """Get list of available colormaps, from the shared registry."""
+        return colormaps.flat_colormaps()
 
     @staticmethod
     def get_available_markers():

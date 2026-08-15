@@ -7,12 +7,38 @@ cartopy>=0.20.0
 numpy>=1.21.0
 xarray>=0.20.0
 netCDF4>=1.5.8
+# Decodes CF time axes, including the model-only calendars (360_day, noleap,
+# all_leap, julian) that datetime cannot represent — see utils/timeaxis.py.
+# Ships as a netCDF4 dependency, declared here because we import it directly.
+cftime>=1.6.0
 geopandas>=0.10.0
 shapely>=1.8.0
 matplotlib>=3.5.0
 pandas>=1.3.0
 rasterio>=1.4.0
 
+# Open-source XYZ basemap tiles (Carto, Esri, NASA, …)
+contextily>=1.3.0
+
+# Scientific colormaps. Both self-register with matplotlib on import, under the
+# 'cmo.' and 'cmc.' prefixes. Optional: geocanvas/colormaps.py omits their
+# groups and the app runs normally if they are missing.
+cmocean>=3.0.0
+cmcrameri>=1.4
+
+# Animation export (gui/time_player.py). imageio writes the GIF; imageio-ffmpeg
+# supplies the bundled ffmpeg binary that MP4 needs. Without the latter the
+# exporter offers GIF only and says so, so it is a soft requirement.
+imageio>=2.31.0
+imageio-ffmpeg>=0.4.9
+
 # Utilities
 pillow>=9.0.0
 requests>=2.27.0
+
+# Development / test only — not needed to run NCExplorer.
+# Run the suite headless: QT_QPA_PLATFORM=offscreen python -m pytest tests/
+pytest>=8.0.0
+pytest-qt>=4.4.0
+# Writes the operator sweep's workbook (operator_lab/excel.py).
+openpyxl>=3.1.0

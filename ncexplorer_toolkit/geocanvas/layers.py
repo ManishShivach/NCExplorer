@@ -18,6 +18,7 @@ from matplotlib.patches import Polygon as MPLPolygon
 from matplotlib.collections import PatchCollection, LineCollection
 
 from .properties import LayerProperty, NetCDFProperties, find_case_insensitive_key
+from ..utils.timeaxis import read_time_axis
 
 import logging
 import threading
@@ -71,7 +72,7 @@ def error_handler(func):
             return func(self, *args, **kwargs)
         except Exception as e:
             error_msg = f"Error in {func.__name__}: {str(e)}"
-            print(f"[Layer Error] {error_msg}")
+            logger.error("Error in %s: %s", func.__name__, e, exc_info=True)
             if hasattr(self.canvas, 'loading_error'):
                 self.canvas.loading_error.emit(func.__name__, error_msg)
             return None
@@ -88,7 +89,7 @@ class NetCDFBandManager:
     def load_netcdf_file(self, filepath, layer_name):
         """Load NetCDF metadata."""
         try:
-            ds = xr.open_dataset(filepath)
+            ds = xr.open_dataset(filepath, decode_times=False)
 
             layer_prop = self.property_manager.get_layer_property(layer_name)
             if not layer_prop:
@@ -102,14 +103,12 @@ class NetCDFBandManager:
             layer_prop.netcdf.coordinate_variables = list(ds.coords.keys())
             layer_prop.netcdf.attributes = dict(ds.attrs)
 
-            # Handle time dimension
-            time_dim_name = find_case_insensitive_key(list(ds.dims.keys()), "time")
+            # Handle time dimension: raw numeric values plus decoded display
+            # labels; see utils/timeaxis.py. ds.sizes rather than ds.dims for
+            # the reason given at the matching line in canvas.py.
+            time_dim_name = find_case_insensitive_key(list(ds.sizes), "time")
             if time_dim_name:
-                layer_prop.netcdf.time_dimension = time_dim_name
-                if time_dim_name in ds:
-                    layer_prop.netcdf.time_values = ds[time_dim_name].values.tolist()
-                else:
-                    layer_prop.netcdf.time_values = list(range(int(ds.sizes.get(time_dim_name, 0))))
+                read_time_axis(ds, time_dim_name).apply_to(layer_prop.netcdf)
 
             # Handle other dimensions
             layer_prop.netcdf.dimensions_info = {dim: size for dim, size in ds.sizes.items()}
@@ -118,7 +117,7 @@ class NetCDFBandManager:
             return True
 
         except Exception as e:
-            print(f"Error loading NetCDF metadata: {e}")
+            logger.error("Error loading NetCDF metadata: %s", e, exc_info=True)
             return False
 
 class LayerManager:
@@ -142,7 +141,7 @@ class LayerManager:
         It now manages the z-order for stacking.
         """
         if layer_name in self.layers:
-            print(f"Warning: Layer '{layer_name}' already exists. Overwriting.")
+            logger.warning("Layer '%s' already exists; overwriting", layer_name)
 
         defaults = {
             'name': layer_name,
@@ -163,7 +162,8 @@ class LayerManager:
         if defaults['filepath'] != 'N/A':
             self.add_loaded_file(defaults['filepath'])
 
-        print(f"Layer '{layer_name}' registered with z-order: {defaults['artist'].get_zorder() if defaults.get('artist') else 'N/A'}.")
+        logger.debug("Layer '%s' registered with z-order: %s", layer_name,
+                     defaults['artist'].get_zorder() if defaults.get('artist') else 'N/A')
 
     @error_handler
     def load_netcdf(self, filepath, layer_name=None, variable=None, time_index=0, alpha=0.8, cmap='viridis'):
@@ -201,8 +201,10 @@ class LayerManager:
 
             self.canvas.progress_update.emit(40)
 
-            # Open dataset and load data
-            ds = xr.open_dataset(filepath)
+            # Open dataset and load data. decode_times=False keeps the time
+            # axis raw (selection is by integer index) and stops xarray raising
+            # on a file whose calendar it does not recognise.
+            ds = xr.open_dataset(filepath, decode_times=False)
             if variable is None:
                 data_vars = list(ds.data_vars.keys())
                 if not data_vars:
@@ -302,7 +304,7 @@ class LayerManager:
 
         except Exception as e:
             error_msg = f"Error loading NetCDF: {str(e)}"
-            print(f"[NetCDF Error] {error_msg}")
+            logger.error("Error loading NetCDF: %s", e, exc_info=True)
             self.canvas.loading_error.emit("NetCDF Error", error_msg)
             self.canvas.progress_update.emit(0)
             return None, None
@@ -445,7 +447,7 @@ class LayerManager:
 
         except Exception as e:
             error_msg = f"Error loading raster: {str(e)}"
-            print(f"[Raster Error] {error_msg}")
+            logger.error("Error loading raster: %s", e, exc_info=True)
             self.canvas.loading_error.emit("Raster Error", error_msg)
             self.canvas.progress_update.emit(0)
             return None, None
@@ -783,7 +785,7 @@ class LayerManager:
                 self.canvas.performance_stats['update_times'].append(update_time)
 
         except Exception as e:
-            print(f"Error updating layer display: {e}")
+            logger.error("Error updating layer display: %s", e, exc_info=True)
 
     @staticmethod
     def _update_vector_display(artist, layer_prop):
@@ -811,7 +813,7 @@ class LayerManager:
                 artist.set_sizes([style.marker_size ** 2] * n_points)
 
         except Exception as e:
-            print(f"Error updating vector display: {e}")
+            logger.error("Error updating vector display: %s", e, exc_info=True)
 
     @staticmethod
     def _update_raster_display(artist, layer_prop):
@@ -831,7 +833,7 @@ class LayerManager:
                     artist.set_clim(vmin=style.vmin, vmax=style.vmax)
 
         except Exception as e:
-            print(f"Error updating raster display: {e}")
+            logger.error("Error updating raster display: %s", e, exc_info=True)
 
     @error_handler
     def remove_layer(self, layer_name):
@@ -844,7 +846,7 @@ class LayerManager:
                 elif hasattr(layer['artist'], 'set_visible'):
                     layer['artist'].set_visible(False)
             except Exception as e:
-                print(f"Warning: Could not remove artist for layer {layer_name}: {e}")
+                logger.warning("Could not remove artist for layer %s: %s", layer_name, e)
 
             # Remove from property manager
             self.property_manager.remove_layer(layer_name)
@@ -861,7 +863,7 @@ class LayerManager:
                 try:
                     layer['dataset'].close()
                 except Exception as e:
-                    logging.warning("Failed to close NetCDF dataset for layer '%s': %s", layer_name, e)
+                    logger.warning("Failed to close NetCDF dataset for layer '%s': %s", layer_name, e)
 
             del self.layers[layer_name]
 
@@ -922,9 +924,9 @@ class LayerManager:
             for layer_name in self.layers.keys():
                 item = QListWidgetItem(layer_name)
                 self.layerListWidget.addItem(item)
-        # If no GUI widget, print current layers for debug
+        # No GUI widget attached: the layer list is debug information only.
         else:
-            print("Current Layers:", list(self.layers.keys()))
+            logger.debug("Current layers: %s", list(self.layers.keys()))
 
     def update_statistics(self):
         """Update the layer statistics summary in the GUI or console."""
@@ -938,8 +940,7 @@ class LayerManager:
                 stats_text += f"{t.capitalize()}: {count}\n"
             self.statsLabel.setText(stats_text)
         else:
-            print(f"Layer Count: {num_layers}")
-            print(f"Layer Types: {type_counts}")
+            logger.debug("Layer count: %s, layer types: %s", num_layers, type_counts)
 
     def clear_all_layers(self):
         """Clear all layers from the layer manager and update the GUI."""

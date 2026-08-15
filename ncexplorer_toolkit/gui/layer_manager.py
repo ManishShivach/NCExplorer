@@ -14,6 +14,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QDateTime
 from PyQt6.QtGui import QAction, QIcon
 
+from ..utils import regionmask
+from .mask_dialog import MaskDialog
+
 logger = logging.getLogger(__name__)
 
 
@@ -431,6 +434,15 @@ class LayerManager(QWidget):
             )
             menu.addAction(visibility_action)
 
+        # Polygon layers can drive a mask over any loaded NetCDF file, so the
+        # entry only appears where it means something.
+        if self.is_polygon_layer(layer_name):
+            menu.addSeparator()
+            mask_action = QAction("Mask NetCDF by this polygon…", self)
+            mask_action.setToolTip("Clip or mask a NetCDF file to this polygon")
+            mask_action.triggered.connect(lambda: self.mask_by_polygon(layer_name))
+            menu.addAction(mask_action)
+
         menu.addSeparator()
 
         # Rename action
@@ -444,6 +456,48 @@ class LayerManager(QWidget):
         menu.addAction(remove_action)
 
         menu.exec(self.layer_list.mapToGlobal(position))
+
+    def canvas_record(self, layer_name):
+        """The canvas' own record for a layer, which holds the real geometry.
+
+        This widget keeps a lightweight copy of each layer (name, type, path);
+        the artists, datasets and GeoDataFrames live on the canvas.
+        """
+        canvas = getattr(self.parent_window, 'geo_canvas', None)
+        if canvas is None:
+            return None
+        try:
+            return canvas.layers.get(layer_name)
+        except Exception:
+            return None
+
+    def is_polygon_layer(self, layer_name) -> bool:
+        """True when a layer carries polygons that could mask a NetCDF file."""
+        record = self.canvas_record(layer_name)
+        if not record or record.get('type') not in ('polygons', 'shapefile'):
+            return False
+        try:
+            return bool(regionmask.layer_features(self.parent_window.geo_canvas, layer_name))
+        except Exception as exc:
+            logger.debug("Could not read polygons from '%s': %s", layer_name, exc)
+            return False
+
+    def mask_by_polygon(self, layer_name):
+        """Open the masking dialog for one polygon layer."""
+        if self.parent_window is None or not hasattr(self.parent_window, 'NCExplorer'):
+            QMessageBox.warning(self, "Not Available",
+                                "The processing engine is not available in the main window.")
+            return
+        if not self.is_polygon_layer(layer_name):
+            QMessageBox.warning(self, "No Polygons",
+                                f"'{layer_name}' has no polygon features to mask with.")
+            return
+
+        try:
+            MaskDialog(self.parent_window, layer_name, self).exec()
+        except Exception as exc:
+            logger.error("Could not open the mask dialog: %s", exc, exc_info=True)
+            QMessageBox.critical(self, "Error", f"Could not open the mask dialog:\n{exc}")
 
     def show_layer_info(self, layer_name):
         """Show detailed layer information, using CDO for dataset-backed layers."""
@@ -502,7 +556,7 @@ class LayerManager(QWidget):
                 metrics_layout.addRow(f"{label}:", QLabel(info_payload["counts"].get(key, "N/A")))
             layout.addWidget(metrics_group)
 
-            raw_group = QGroupBox("Raw CDO Output")
+            raw_group = QGroupBox("Raw `operator- griddes` Output")
             raw_layout = QVBoxLayout(raw_group)
             raw_text = QTextEdit()
             raw_text.setReadOnly(True)
@@ -529,7 +583,7 @@ class LayerManager(QWidget):
             return None, "No dataset file is available for this layer."
 
         if not self.parent_window or not hasattr(self.parent_window, "NCExplorer"):
-            return None, "CDO integration is not available in the main window."
+            return None, "The processing engine is not available in the main window."
 
         integration = self.parent_window.NCExplorer
         commands = ["griddes", "ndate", "ngridpoints", "ngrids", "nlevel", "nmon", "nyear", "npar", "ntime"]
@@ -540,12 +594,12 @@ class LayerManager(QWidget):
             for command in commands:
                 operator = getattr(integration, command, None)
                 if operator is None:
-                    return None, f"CDO operator '{command}' is not available."
+                    return None, f"Operator '{command}' is not available."
 
                 result = operator(filepath)
                 if not result.success:
-                    stderr = result.stderr.strip() or "Unknown CDO error."
-                    return None, f"Failed to run `cdo {command}` on:\n{filepath}\n\n{stderr}"
+                    stderr = result.stderr.strip() or "Unknown error."
+                    return None, f"Failed to run `{command}` on:\n{filepath}\n\n{stderr}"
 
                 results[command] = result.stdout.strip()
         finally:
