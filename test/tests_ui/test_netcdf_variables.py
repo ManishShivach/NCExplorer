@@ -156,8 +156,9 @@ def test_picking_in_the_properties_tab_reaches_the_map(canvas, two_variable_nc):
     """The window's slot has to route that path through set_netcdf_variable.
 
     Called unbound against a stand-in rather than a whole main window: the slot
-    reads only the two attributes below, and building the real window pulls up
-    the entire app for one branch.
+    reads only the attributes below, and building the real window pulls up the
+    entire app for one branch. An edit is a change to the project, so the slot
+    also reports the project dirty; the stand-in absorbs that.
     """
     from ncexplorer_toolkit.gui.main_window import NCExplorerOperatorGUI
 
@@ -168,6 +169,9 @@ def test_picking_in_the_properties_tab_reaches_the_map(canvas, two_variable_nc):
     class Window:
         current_layer = "eca_cdd"
         geo_canvas = canvas
+
+        def _mark_project_dirty(self, dirty=True):
+            pass
 
     announced = []
     canvas.variable_changed.connect(
@@ -199,10 +203,15 @@ def test_other_properties_still_go_straight_to_the_manager(canvas, nc_standard):
         current_layer = "standard"
         geo_canvas = canvas
 
+        def _mark_project_dirty(self, dirty=True):
+            pass
+
     NCExplorerOperatorGUI.on_property_changed(Window(), "style.colormap", "magma")
 
     props = canvas.property_manager.get_layer_property("standard")
     assert props.style.colormap == "magma"
+    # Straight to the artist too, which is what makes the picker worth having.
+    assert canvas.layers["standard"]["artist"].get_cmap().name == "magma"
 
 
 # --- the loader that was not live -----------------------------------------

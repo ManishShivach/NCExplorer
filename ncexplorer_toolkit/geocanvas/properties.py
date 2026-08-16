@@ -740,14 +740,25 @@ class MetadataTabWidget(PropertyTabWidget):
 
         self._updating = False
 
-class StyleTabWidget(PropertyTabWidget):
-    """Tab widget for editing style properties."""
+class SymbologyTabWidget(PropertyTabWidget):
+    """The Symbology tab: how one layer is drawn.
+
+    Everything a layer's appearance is made of lives here — opacity, and then
+    either the vector symbols or the raster colour scale, depending on what the
+    layer is. Each control writes straight through to the layer's stored style,
+    so a change is on the map as it is made; there is no Apply step.
+
+    Only controls that actually reach the canvas are offered. The stored style
+    also carries blend mode and brightness/contrast/saturation/hue, which
+    nothing applies to an artist; offering them would be four sliders that
+    silently do nothing.
+    """
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
 
         # Common properties
-        common_group = QGroupBox("Common Properties")
+        common_group = QGroupBox("Layer")
         common_layout = QFormLayout(common_group)
 
         # Visibility checkbox
@@ -757,27 +768,32 @@ class StyleTabWidget(PropertyTabWidget):
         )
         common_layout.addRow("Visible:", self.visible_check)
 
-        # Transparency slider
-        transparency_layout = QHBoxLayout()
-        self.transparency_slider = QSlider(Qt.Orientation.Horizontal)
-        self.transparency_slider.setMinimum(0)
-        self.transparency_slider.setMaximum(100)
-        self.transparency_slider.valueChanged.connect(self._on_transparency_changed)
+        # Opacity, which is what the user is choosing; the stored property is
+        # its complement, transparency, and the handlers convert.
+        opacity_layout = QHBoxLayout()
+        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.opacity_slider.setMinimum(0)
+        self.opacity_slider.setMaximum(100)
+        self.opacity_slider.setToolTip(
+            "How opaque this layer is: 100% hides whatever is under it, 0% is "
+            "invisible."
+        )
+        self.opacity_slider.valueChanged.connect(self._on_opacity_changed)
 
-        self.transparency_spin = QSpinBox()
-        self.transparency_spin.setMinimum(0)
-        self.transparency_spin.setMaximum(100)
-        self.transparency_spin.setSuffix("%")
-        self.transparency_spin.valueChanged.connect(self._on_transparency_spin_changed)
+        self.opacity_spin = QSpinBox()
+        self.opacity_spin.setMinimum(0)
+        self.opacity_spin.setMaximum(100)
+        self.opacity_spin.setSuffix("%")
+        self.opacity_spin.valueChanged.connect(self._on_opacity_spin_changed)
 
-        transparency_layout.addWidget(self.transparency_slider)
-        transparency_layout.addWidget(self.transparency_spin)
-        common_layout.addRow("Transparency:", transparency_layout)
+        opacity_layout.addWidget(self.opacity_slider)
+        opacity_layout.addWidget(self.opacity_spin)
+        common_layout.addRow("Opacity:", opacity_layout)
 
         layout.addWidget(common_group)
 
         # Vector properties
-        self.vector_group = QGroupBox("Vector Properties")
+        self.vector_group = QGroupBox("Vector Symbology")
         vector_layout = QFormLayout(self.vector_group)
 
         # Colors
@@ -816,14 +832,10 @@ class StyleTabWidget(PropertyTabWidget):
         )
         vector_layout.addRow("Line Style:", self.line_style_combo)
 
-        # Marker properties
-        self.marker_style_combo = QComboBox()
-        self.marker_style_combo.addItems(["circle", "square", "triangle", "diamond", "star"])
-        self.marker_style_combo.currentTextChanged.connect(
-            lambda text: self.emit_property_changed("style.marker_style", text)
-        )
-        vector_layout.addRow("Marker Style:", self.marker_style_combo)
-
+        # Marker size. Marker *shape* is deliberately absent: the canvas can
+        # resize and recolour an existing scatter, but not re-cut its paths, so
+        # a shape chosen here would not appear until the layer was redrawn for
+        # some other reason.
         self.marker_size_spin = QDoubleSpinBox()
         self.marker_size_spin.setMinimum(0.1)
         self.marker_size_spin.setMaximum(20.0)
@@ -836,7 +848,7 @@ class StyleTabWidget(PropertyTabWidget):
         layout.addWidget(self.vector_group)
 
         # Raster properties
-        self.raster_group = QGroupBox("Raster Properties")
+        self.raster_group = QGroupBox("Raster Symbology")
         raster_layout = QFormLayout(self.raster_group)
 
         # Colormap. The list comes from geocanvas.colormaps so this widget and
@@ -844,6 +856,10 @@ class StyleTabWidget(PropertyTabWidget):
         self.colormap_combo = QComboBox()
         self._populate_colormap_combo()
         self.colormap_combo.setEditable(True)
+        self.colormap_combo.setToolTip(
+            "The colour scale this layer is drawn with. Each layer keeps its "
+            "own, so two rasters on the same map can be told apart."
+        )
         self.colormap_combo.currentTextChanged.connect(
             lambda text: self.emit_property_changed("style.colormap", text)
         )
@@ -885,8 +901,12 @@ class StyleTabWidget(PropertyTabWidget):
         self.vmax_spin.setMinimum(-999999.0)
         self.vmax_spin.setMaximum(999999.0)
         self.vmax_spin.setDecimals(4)
+        # "Auto" means "let the data decide", and Qt only ever draws a special
+        # value text at a spin box's *minimum* — so both boxes use their minimum
+        # as the sentinel. Sentinelling vmax at its maximum, as this did, left
+        # the box reading a bare 999999.0000 and looking like a real ceiling.
         self.vmax_spin.setSpecialValueText("Auto")
-        self.vmax_spin.setValue(self.vmax_spin.maximum())
+        self.vmax_spin.setValue(self.vmax_spin.minimum())
         self.vmax_spin.valueChanged.connect(self._on_vmax_changed)
 
         value_range_layout.addWidget(QLabel("Min:"))
@@ -905,52 +925,6 @@ class StyleTabWidget(PropertyTabWidget):
         raster_layout.addRow("Interpolation:", self.interpolation_combo)
 
         layout.addWidget(self.raster_group)
-
-        # Advanced properties
-        self.advanced_group = QGroupBox("Advanced Properties")
-        advanced_layout = QFormLayout(self.advanced_group)
-
-        # Blend mode
-        self.blend_mode_combo = QComboBox()
-        self.blend_mode_combo.addItems(["normal", "multiply", "screen", "overlay", "darken", "lighten"])
-        self.blend_mode_combo.currentTextChanged.connect(
-            lambda text: self.emit_property_changed("style.blend_mode", text)
-        )
-        advanced_layout.addRow("Blend Mode:", self.blend_mode_combo)
-
-        # Brightness, Contrast, Saturation sliders
-        self.brightness_controls = self._create_adjustment_slider("brightness")
-        advanced_layout.addRow("Brightness:", self.brightness_controls)
-
-        self.contrast_controls = self._create_adjustment_slider("contrast")
-        advanced_layout.addRow("Contrast:", self.contrast_controls)
-
-        self.saturation_controls = self._create_adjustment_slider("saturation")
-        advanced_layout.addRow("Saturation:", self.saturation_controls)
-
-        # Hue shift
-        hue_layout = QHBoxLayout()
-        self.hue_shift_slider = QSlider(Qt.Orientation.Horizontal)
-        self.hue_shift_slider.setMinimum(-180)
-        self.hue_shift_slider.setMaximum(180)
-        self.hue_shift_slider.setValue(0)
-        self.hue_shift_slider.valueChanged.connect(self._on_hue_shift_changed)
-
-        self.hue_shift_spin = QSpinBox()
-        self.hue_shift_spin.setMinimum(-180)
-        self.hue_shift_spin.setMaximum(180)
-        self.hue_shift_spin.setSuffix("°")
-        self.hue_shift_spin.valueChanged.connect(self._on_hue_shift_spin_changed)
-
-        hue_layout.addWidget(self.hue_shift_slider)
-        hue_layout.addWidget(self.hue_shift_spin)
-        advanced_layout.addRow("Hue Shift:", hue_layout)
-
-        layout.addWidget(self.advanced_group)
-
-        self.apply_button = QPushButton("Apply Style Changes")
-        self.apply_button.clicked.connect(self.apply_style_changes)
-        layout.addWidget(self.apply_button)
 
         # Add stretch to push everything to the top
         layout.addStretch()
@@ -981,58 +955,23 @@ class StyleTabWidget(PropertyTabWidget):
             name = self.colormap_combo.currentText()
         self.diverging_center_check.setEnabled(colormap_registry.is_diverging(name))
 
-    def _create_adjustment_slider(self, property_name: str):
-        """Create a slider for adjustment properties (-1.0 to 1.0)."""
-        widget_layout = QHBoxLayout()
+    def _on_opacity_changed(self, value: int):
+        """Handle the opacity slider moving."""
+        self.opacity_spin.blockSignals(True)
+        self.opacity_spin.setValue(value)
+        self.opacity_spin.blockSignals(False)
+        self._emit_opacity(value)
 
-        slider = QSlider(Qt.Orientation.Horizontal)
-        slider.setMinimum(-100)
-        slider.setMaximum(100)
-        slider.setValue(0)
+    def _on_opacity_spin_changed(self, value: int):
+        """Handle an opacity percentage being typed in."""
+        self.opacity_slider.blockSignals(True)
+        self.opacity_slider.setValue(value)
+        self.opacity_slider.blockSignals(False)
+        self._emit_opacity(value)
 
-        spin = QSpinBox()
-        spin.setMinimum(-100)
-        spin.setMaximum(100)
-        spin.setSuffix("%")
-
-        # Connect signals
-        slider.valueChanged.connect(
-            lambda value: self._on_adjustment_changed(property_name, value, spin)
-        )
-        spin.valueChanged.connect(
-            lambda value: self._on_adjustment_spin_changed(property_name, value, slider)
-        )
-
-        widget_layout.addWidget(slider)
-        widget_layout.addWidget(spin)
-
-        # Store references for later use
-        setattr(self, f"{property_name}_slider", slider)
-        setattr(self, f"{property_name}_spin", spin)
-
-        container = QWidget()
-        container.setLayout(widget_layout)
-        return container
-
-    def _on_transparency_changed(self, value: int):
-        """Handle transparency slider change."""
-        self.transparency_spin.blockSignals(True)
-        self.transparency_spin.setValue(value)
-        self.transparency_spin.blockSignals(False)
-
-        # Convert percentage to 0.0-1.0 range
-        transparency_value = value / 100.0
-        self.emit_property_changed("style.transparency", transparency_value)
-
-    def _on_transparency_spin_changed(self, value: int):
-        """Handle transparency spinbox change."""
-        self.transparency_slider.blockSignals(True)
-        self.transparency_slider.setValue(value)
-        self.transparency_slider.blockSignals(False)
-
-        # Convert percentage to 0.0-1.0 range
-        transparency_value = value / 100.0
-        self.emit_property_changed("style.transparency", transparency_value)
+    def _emit_opacity(self, percent: int):
+        """Store an opacity percentage as the transparency the style holds."""
+        self.emit_property_changed("style.transparency", 1.0 - percent / 100.0)
 
     def _on_vmin_changed(self, value: float):
         """Handle vmin change."""
@@ -1043,46 +982,10 @@ class StyleTabWidget(PropertyTabWidget):
 
     def _on_vmax_changed(self, value: float):
         """Handle vmax change."""
-        if value == self.vmax_spin.maximum():
+        if value == self.vmax_spin.minimum():
             self.emit_property_changed("style.vmax", None)
         else:
             self.emit_property_changed("style.vmax", value)
-
-    def _on_adjustment_changed(self, property_name: str, value: int, spin_widget):
-        """Handle adjustment slider change."""
-        spin_widget.blockSignals(True)
-        spin_widget.setValue(value)
-        spin_widget.blockSignals(False)
-
-        # Convert percentage to -1.0 to 1.0 range
-        adjusted_value = value / 100.0
-        self.emit_property_changed(f"style.{property_name}", adjusted_value)
-
-    def _on_adjustment_spin_changed(self, property_name: str, value: int, slider_widget):
-        """Handle adjustment spinbox change."""
-        slider_widget.blockSignals(True)
-        slider_widget.setValue(value)
-        slider_widget.blockSignals(False)
-
-        # Convert percentage to -1.0 to 1.0 range
-        adjusted_value = value / 100.0
-        self.emit_property_changed(f"style.{property_name}", adjusted_value)
-
-    def _on_hue_shift_changed(self, value: int):
-        """Handle hue shift slider change."""
-        self.hue_shift_spin.blockSignals(True)
-        self.hue_shift_spin.setValue(value)
-        self.hue_shift_spin.blockSignals(False)
-
-        self.emit_property_changed("style.hue_shift", float(value))
-
-    def _on_hue_shift_spin_changed(self, value: int):
-        """Handle hue shift spinbox change."""
-        self.hue_shift_slider.blockSignals(True)
-        self.hue_shift_slider.setValue(value)
-        self.hue_shift_slider.blockSignals(False)
-
-        self.emit_property_changed("style.hue_shift", float(value))
 
     def load_properties(self):
         """Load properties from layer property object."""
@@ -1092,10 +995,12 @@ class StyleTabWidget(PropertyTabWidget):
         # Common properties
         self.visible_check.setChecked(self.layer_property.visible)
 
-        # Transparency (convert from 0.0-1.0 to 0-100 percentage)
-        transparency_percent = int(style.transparency * 100)
-        self.transparency_slider.setValue(transparency_percent)
-        self.transparency_spin.setValue(transparency_percent)
+        # Opacity, shown as the complement of the stored transparency. Rounded
+        # rather than truncated, so a layer loaded at alpha 0.8 reads back as
+        # 80% and not 79%.
+        opacity_percent = int(round((1.0 - style.transparency) * 100))
+        self.opacity_slider.setValue(opacity_percent)
+        self.opacity_spin.setValue(opacity_percent)
 
         # Vector properties
         self.color_button.set_color(style.color)
@@ -1103,7 +1008,6 @@ class StyleTabWidget(PropertyTabWidget):
         self.edge_color_button.set_color(style.edge_color)
         self.line_width_spin.setValue(style.line_width)
         self.line_style_combo.setCurrentText(style.line_style)
-        self.marker_style_combo.setCurrentText(style.marker_style)
         self.marker_size_spin.setValue(style.marker_size)
 
         # Raster properties
@@ -1121,73 +1025,19 @@ class StyleTabWidget(PropertyTabWidget):
         if style.vmax is not None:
             self.vmax_spin.setValue(style.vmax)
         else:
-            self.vmax_spin.setValue(self.vmax_spin.maximum())
+            self.vmax_spin.setValue(self.vmax_spin.minimum())
 
         self.interpolation_combo.setCurrentText(style.interpolation)
 
-        # Advanced properties
-        self.blend_mode_combo.setCurrentText(style.blend_mode)
-
-        # Adjustment properties (convert from -1.0 to 1.0 to -100 to 100 percentage)
-        self.brightness_slider.setValue(int(style.brightness * 100))
-        self.brightness_spin.setValue(int(style.brightness * 100))
-
-        self.contrast_slider.setValue(int(style.contrast * 100))
-        self.contrast_spin.setValue(int(style.contrast * 100))
-
-        self.saturation_slider.setValue(int(style.saturation * 100))
-        self.saturation_spin.setValue(int(style.saturation * 100))
-
-        # Hue shift
-        self.hue_shift_slider.setValue(int(style.hue_shift))
-        self.hue_shift_spin.setValue(int(style.hue_shift))
-
-        # Show/hide groups based on layer type
-        layer_type = self.layer_property.metadata.layer_type
-        self.vector_group.setVisible(layer_type == "vector")
-        self.raster_group.setVisible(layer_type in ["raster", "netcdf"])
+        self.update_layer_type_visibility()
 
         self._updating = False
 
     def update_layer_type_visibility(self):
-        """Update visibility of property groups based on layer type."""
-        if hasattr(self, 'layer_property'):
-            layer_type = self.layer_property.metadata.layer_type
-            self.vector_group.setVisible(layer_type == "vector")
-            self.raster_group.setVisible(layer_type in ["raster", "netcdf"])
-
-    def apply_style_changes(self):
-        """Explicitly re-emit the current style state to refresh the layer display."""
-        style = self.layer_property.style
-        self.emit_property_changed("visible", self.visible_check.isChecked())
-        self.emit_property_changed("style.transparency", self.transparency_slider.value() / 100.0)
-        self.emit_property_changed("style.color", self.color_button.get_color())
-        self.emit_property_changed("style.fill_color", self.fill_color_button.get_color())
-        self.emit_property_changed("style.edge_color", self.edge_color_button.get_color())
-        self.emit_property_changed("style.line_width", self.line_width_spin.value())
-        self.emit_property_changed("style.line_style", self.line_style_combo.currentText())
-        self.emit_property_changed("style.marker_style", self.marker_style_combo.currentText())
-        self.emit_property_changed("style.marker_size", self.marker_size_spin.value())
-        self.emit_property_changed("style.colormap", self.colormap_combo.currentText())
-        self.emit_property_changed("style.reverse_colormap", self.reverse_colormap_check.isChecked())
-        self.emit_property_changed(
-            "style.diverging_center_zero", self.diverging_center_check.isChecked()
-        )
-        self.emit_property_changed(
-            "style.vmin",
-            None if self.vmin_spin.value() == self.vmin_spin.minimum() else self.vmin_spin.value()
-        )
-        self.emit_property_changed(
-            "style.vmax",
-            None if self.vmax_spin.value() == self.vmax_spin.maximum() else self.vmax_spin.value()
-        )
-        self.emit_property_changed("style.interpolation", self.interpolation_combo.currentText())
-        self.emit_property_changed("style.blend_mode", self.blend_mode_combo.currentText())
-        self.emit_property_changed("style.brightness", self.brightness_slider.value() / 100.0)
-        self.emit_property_changed("style.contrast", self.contrast_slider.value() / 100.0)
-        self.emit_property_changed("style.saturation", self.saturation_slider.value() / 100.0)
-        self.emit_property_changed("style.hue_shift", float(self.hue_shift_slider.value()))
-        self.layer_property.style = style
+        """Show the symbology that belongs to this kind of layer, and no other."""
+        layer_type = self.layer_property.metadata.layer_type
+        self.vector_group.setVisible(layer_type == "vector")
+        self.raster_group.setVisible(layer_type in ["raster", "netcdf"])
 
 
 class DimensionsTabWidget(PropertyTabWidget):
@@ -1399,6 +1249,7 @@ class LayerPropertyEditor(QWidget):
         super().__init__(parent)
         self.property_manager = property_manager
         self.current_layer_name: Optional[str] = None
+        self.symbology_tab: Optional[SymbologyTabWidget] = None
         self.metadata_tab: Optional[MetadataTabWidget] = None
         self.dimensions_tab: Optional[DimensionsTabWidget] = None
         self.netcdf_tab: Optional[NetCDFTabWidget] = None
@@ -1432,7 +1283,7 @@ class LayerPropertyEditor(QWidget):
         self.empty_label.setVisible(not enabled)
 
     def _disconnect_tab_signals(self):
-        for tab in (self.metadata_tab, self.netcdf_tab):
+        for tab in (self.symbology_tab, self.metadata_tab, self.netcdf_tab):
             if tab is not None:
                 try:
                     tab.property_changed.disconnect(self.property_changed)
@@ -1443,16 +1294,21 @@ class LayerPropertyEditor(QWidget):
         self._disconnect_tab_signals()
         self.tabs.clear()
 
+        self.symbology_tab = SymbologyTabWidget(layer_property, self)
         self.metadata_tab = MetadataTabWidget(layer_property, self)
         self.dimensions_tab = DimensionsTabWidget(layer_property, self)
         self.netcdf_tab = NetCDFTabWidget(layer_property, self)
 
+        # Symbology is what a layer's properties are usually opened for — the
+        # colour scale and the opacity — so it leads and is the tab shown first.
+        self.symbology_tab.property_changed.connect(self.property_changed)
         self.metadata_tab.property_changed.connect(self.property_changed)
         # The variable picker is the only editable thing on the NetCDF tab, and
         # it is worthless unwired: a two-variable result would list both and
         # keep drawing the first.
         self.netcdf_tab.property_changed.connect(self.property_changed)
 
+        self.tabs.addTab(self.symbology_tab, "Symbology")
         self.tabs.addTab(self.metadata_tab, "Metadata")
         self.tabs.addTab(self.dimensions_tab, "Dimensions")
 
@@ -1461,6 +1317,7 @@ class LayerPropertyEditor(QWidget):
 
     def clear_editor(self):
         self.current_layer_name = None
+        self.symbology_tab = None
         self.layer_title.setText("No layer selected")
         self.layer_summary.setText("Select a layer from the Layer Manager to inspect its properties.")
         self._disconnect_tab_signals()
@@ -1468,8 +1325,26 @@ class LayerPropertyEditor(QWidget):
         self._set_editor_enabled(False)
 
     def refresh_current_layer(self):
-        if self.current_layer_name:
-            self.load_layer_properties(self.current_layer_name)
+        """Re-read the shown values without rebuilding the panel.
+
+        Rebuilding is what this used to do, and it cannot be done in answer to
+        an edit made *here*: the tabs are destroyed and made again, so the
+        slider being dragged is deleted underneath the pointer, and the panel
+        jumps back to its first tab after every keystroke. Each tab reloads
+        from the same property object instead, which is all a refresh needs.
+        """
+        if not self.current_layer_name:
+            return
+
+        layer_property = self.property_manager.get_layer_property(self.current_layer_name)
+        if layer_property is None:
+            self.clear_editor()
+            return
+
+        for tab in (self.symbology_tab, self.metadata_tab,
+                    self.dimensions_tab, self.netcdf_tab):
+            if tab is not None:
+                tab.load_properties()
 
     def load_layer_properties(self, layer_name: str) -> bool:
         layer_property = self.property_manager.get_layer_property(layer_name)

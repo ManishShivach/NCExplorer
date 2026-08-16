@@ -117,14 +117,25 @@ class GeoCanvas(FigureCanvas):
     # means (see begin_region_selection).
     region_selected = pyqtSignal(float, float, float, float)
 
-    # Background layering (kept below data: rasters draw at zorder 0, vectors at
-    # 5/7/10). The land/ocean fill is the lowest backdrop; basemap tiles sit just
-    # above it but still beneath every data layer.
+    # Background layering (kept below data). The land/ocean fill is the lowest
+    # backdrop; basemap tiles sit just above it but still beneath every data
+    # layer.
     BACKDROP_ZORDER = -20
     BASEMAP_ZORDER = -10
     # The offline Natural Earth backdrop stacks its six layers upward from here,
     # so the whole set stays under BASEMAP_ZORDER and far under the data.
     NATURAL_EARTH_ZORDER = -19
+
+    # Data layers are stacked inside a band of their own, spread evenly between
+    # these two bounds by _apply_layer_zorders. Their order comes from one place
+    # — self.layer_order, which the layer manager's list drives — rather than
+    # from the per-type constants the loaders used to pass to imshow and to the
+    # collections, which stacked every raster under every vector no matter what
+    # the list showed. The band stops below the coastline and border strokes
+    # (zorder 1) so those reference lines stay drawn over the data, which is
+    # where they have always been.
+    LAYER_ZORDER_BASE = 0.0
+    LAYER_ZORDER_TOP = 1.0
 
     # Selector entries the offline sources answer to. main_window builds the
     # combo from these, so they are declared here with the code that reads them.
@@ -136,6 +147,11 @@ class GeoCanvas(FigureCanvas):
 
     # Layer types that carry a sampleable value / colour scale.
     SCALAR_LAYER_TYPES = ('netcdf', 'raster')
+
+    # Dimension names that carry the map itself. Anything else a variable has —
+    # time, level, ensemble member — is a dimension a 2-D field is taken along;
+    # see _to_spatial_slice.
+    SPATIAL_DIM_NAMES = ('lat', 'latitude', 'lon', 'longitude', 'x', 'y')
 
     def __init__(self, parent=None, width=12, height=8, dpi=100):
         """Initialize Enhanced GeoCanvas with comprehensive property management."""
@@ -159,10 +175,13 @@ class GeoCanvas(FigureCanvas):
 
         # Layer management (moved from LayerManager)
         self.layers = {}  # matplotlib artists
-        self.layer_order = []  # Draw order
+        # The stack, topmost first — the same order the layer manager's list
+        # shows. It is what _apply_layer_zorders turns into artist z-orders, so
+        # every reordering goes through set_layer_order rather than touching an
+        # artist directly.
+        self.layer_order = []
         self.loaded_files = set()
         self._layer_cache = LayerCache(max_size=50)
-        self._z_order_counter = 1
 
         # Map properties. The projection is a registry entry (see
         # geocanvas/projections.py), not a free-form CRS: the name is what a
@@ -617,7 +636,6 @@ class GeoCanvas(FigureCanvas):
     def _redraw_layer(self, name, record):
         """Re-create one layer's artist, keeping the record it already has."""
         kind = record.get('type')
-        previous = record.get('artist')
 
         if kind in self.SCALAR_LAYER_TYPES:
             artist = self._draw_scalar_layer(record)
@@ -641,11 +659,11 @@ class GeoCanvas(FigureCanvas):
             return
 
         artist.set_visible(bool(record.get('visible', True)))
-        try:
-            if previous is not None:
-                artist.set_zorder(previous.get_zorder())
-        except Exception as exc:
-            logger.debug("Could not carry a layer's z-order across: %s", exc)
+        # The new artist takes its z-order from the stack rather than from the
+        # artist it replaces: the stack is what the layer manager shows, and
+        # reading it back off the old artist would lose a reorder made while
+        # this layer was between artists.
+        self._apply_layer_zorders()
 
     def _set_layer_array(self, layer_name, record, array):
         """Show a different 2-D array — another time step — on an existing layer.
@@ -656,7 +674,22 @@ class GeoCanvas(FigureCanvas):
         so set_data would draw a mangled image: the layer is drawn again
         instead. Either way the record keeps the source array, because that is
         what the next projection change redraws from.
+
+        An array that is not a 2-D field is refused here rather than handed on.
+        Both ways out of this method die on one: matplotlib raises "Invalid
+        shape" and cartopy, on any projection but the default, raises from
+        inside its own warp — and either exception, raised in a Qt slot, takes
+        the whole application down with it instead of one frame.
         """
+        if getattr(array, 'ndim', 2) != 2:
+            shape = getattr(array, 'shape', '?')
+            logger.error("Refusing to draw layer '%s': expected a 2-D field, got %s",
+                         layer_name, shape)
+            self.status_update.emit(
+                f"'{layer_name}' could not be drawn: {shape} is not a 2-D field"
+            )
+            return
+
         record['array'] = array
 
         artist = record.get('artist')
@@ -2072,18 +2105,89 @@ class GeoCanvas(FigureCanvas):
         }
         defaults.update(layer_properties)
 
-        # Assign z-order for stacking
-        if 'zorder' not in defaults and defaults.get('artist'):
-            defaults['artist'].set_zorder(self._z_order_counter)
-            self._z_order_counter += 1
-
         self.layers[layer_name] = defaults
+        self._stack_new_layer(layer_name)
 
         if defaults['filepath'] != 'N/A':
             self.add_loaded_file(defaults['filepath'])
 
         logger.debug("Layer '%s' registered with z-order: %s", layer_name,
                      defaults['artist'].get_zorder() if defaults.get('artist') else 'N/A')
+
+    # ------------------------------------------------------------------
+    # Stacking order
+    # ------------------------------------------------------------------
+    def layer_stacking_order(self):
+        """The data layers as they are stacked, topmost first."""
+        self._sync_layer_order()
+        return list(self.layer_order)
+
+    def set_layer_order(self, layer_names):
+        """Stack the data layers in the given order, topmost first.
+
+        This is how the layer manager's list reaches matplotlib: the list is the
+        authority on which layer covers which, and nothing else assigns a data
+        layer's z-order. Names this canvas does not know are ignored, and a
+        layer the caller left out keeps its place rather than dropping out of
+        the stack — a layer that loaded while the list was being read is still
+        drawn.
+        """
+        wanted = []
+        for name in layer_names:
+            if name in self.layers and name not in wanted:
+                wanted.append(name)
+
+        rest = [name for name in self.layer_order
+                if name in self.layers and name not in wanted]
+        self.layer_order = wanted + rest
+        self._apply_layer_zorders()
+        self.draw_idle()
+        return list(self.layer_order)
+
+    def _stack_new_layer(self, layer_name):
+        """Put a newly loaded layer on top and restack the rest under it.
+
+        A name already in the stack keeps the place it has: this also runs when
+        a layer is drawn again in place — a new time step, a projection change,
+        a reload of the same file — and none of those is a new layer.
+        """
+        if layer_name not in self.layer_order:
+            self.layer_order.insert(0, layer_name)
+        self._apply_layer_zorders()
+
+    def _sync_layer_order(self):
+        """Drop departed layers from the stack and adopt any that never joined.
+
+        A record written straight into ``self.layers`` rather than through a
+        loader counts as newly added, and a new layer belongs on top. Dict
+        insertion order runs oldest-first, so it is reversed to get there.
+        """
+        known = [name for name in self.layer_order if name in self.layers]
+        missing = [name for name in self.layers if name not in known]
+        self.layer_order = list(reversed(missing)) + known
+
+    def _apply_layer_zorders(self):
+        """Give every layer's artist the z-order its place in the stack implies.
+
+        The band is divided evenly rather than stepped by a fixed amount, so no
+        number of layers can push the topmost one past LAYER_ZORDER_TOP and over
+        the reference features.
+        """
+        self._sync_layer_order()
+        if not self.layer_order:
+            return
+
+        step = (self.LAYER_ZORDER_TOP - self.LAYER_ZORDER_BASE) / (len(self.layer_order) + 1)
+        # The last name in the list is the bottom of the stack, so counting up
+        # from it gives the topmost layer the highest z-order.
+        for height, name in enumerate(reversed(self.layer_order), start=1):
+            artist = (self.layers.get(name) or {}).get('artist')
+            if artist is None:
+                continue
+            try:
+                artist.set_zorder(self.LAYER_ZORDER_BASE + height * step)
+            except Exception as exc:
+                logger.debug("Could not restack layer '%s': %s", name, exc)
 
     @error_handler
     def load_file(self, filepath):
@@ -2228,19 +2332,14 @@ class GeoCanvas(FigureCanvas):
             data_array = ds[variable]
             self.progress_update.emit(60)
 
-            # Handle time dimension with validation
-            if 'time' in data_array.dims and len(data_array.dims) > 2:
-                if time_index >= len(data_array.time):
-                    time_index = 0
-                data_array = data_array.isel(time=time_index)
-
-            # Handle additional dimensions
-            if len(data_array.dims) > 2:
-                spatial_dims = ['lat', 'latitude', 'lon', 'longitude', 'x', 'y']
-                for dim_name in data_array.dims:
-                    if dim_name.lower() not in spatial_dims:
-                        data_array = data_array.isel({dim_name: 0})
-                        break
+            # Down to the 2-D field for this time step, along every dimension
+            # that is not one of the two spatial ones. Case-insensitive on the
+            # time dimension's name, because "Time" and "TIME" are both in use.
+            data_array = self._to_spatial_slice(
+                data_array,
+                time_dim=find_case_insensitive_key(list(data_array.dims), "time"),
+                time_index=time_index,
+            )
 
             self.progress_update.emit(70)
 
@@ -2288,6 +2387,7 @@ class GeoCanvas(FigureCanvas):
                 'visible': True,
                 'load_time': time.perf_counter() - start_time
             }
+            self._stack_new_layer(layer_name)
 
             # Update layer properties
             layer_prop.dimensions.width = data.shape[1]
@@ -2396,6 +2496,36 @@ class GeoCanvas(FigureCanvas):
             logger.error("Error loading NetCDF metadata: %s", e, exc_info=True)
             return False
 
+    @classmethod
+    def _to_spatial_slice(cls, data_array, time_dim=None, time_index=0):
+        """Reduce a variable to the 2-D field a map can draw.
+
+        A NetCDF variable is not always (time, lat, lon). NOAAGlobalTemp carries
+        a singleton ``z`` level between the two, and model output can add an
+        ensemble member on top of that; every dimension that is not one of the
+        two spatial ones is taken at its first entry.
+
+        *Every* one of them, which is what the loader used to get wrong — it
+        dropped the first extra dimension and stopped — and what the time slider
+        and the variable picker did not do at all. The array they built stayed
+        three-dimensional, and a 3-D array reaching imshow is read as an image
+        with one colour channel per column: on the default projection matplotlib
+        rejects it, and on any other cartopy dies first, inside its own warp,
+        with a bare "zero-size array to reduction operation maximum".
+        """
+        if time_dim and time_dim in data_array.dims:
+            size = data_array.sizes[time_dim]
+            index = time_index if 0 <= time_index < size else 0
+            data_array = data_array.isel({time_dim: index})
+
+        for name in list(data_array.dims):
+            if data_array.ndim <= 2:
+                break
+            if str(name).lower() not in cls.SPATIAL_DIM_NAMES:
+                data_array = data_array.isel({name: 0})
+
+        return data_array
+
     @staticmethod
     def _extract_coordinates(data_array):
         """Extract coordinates from a data array with multiple fallbacks."""
@@ -2498,6 +2628,7 @@ class GeoCanvas(FigureCanvas):
                 'crs': read.source_crs,
                 'subdatasets': read.subdatasets,
             }
+            self._stack_new_layer(layer_name)
 
             # Update properties
             layer_prop.dimensions.width = read.width
@@ -2757,9 +2888,13 @@ class GeoCanvas(FigureCanvas):
 
             lons, lats = zip(*valid_coords)
 
+            # No zorder here, nor in add_polygons/add_lines: _stack_new_layer
+            # below gives every data layer its z-order from the layer manager's
+            # order. The per-type constants these used to pass pinned points
+            # over lines over polygons over every raster, whatever the list said.
             scatter = self.ax.scatter(lons, lats, c=colors, s=sizes, alpha=alpha,
                                            marker=marker, transform=ccrs.PlateCarree(),
-                                           label=layer_name, zorder=10)
+                                           label=layer_name)
 
             self.layers[layer_name] = {
                 'type': 'points',
@@ -2768,6 +2903,7 @@ class GeoCanvas(FigureCanvas):
                 'visible': True,
                 'feature_count': len(valid_coords)
             }
+            self._stack_new_layer(layer_name)
 
             self.draw()
             self.layer_added.emit(layer_name)
@@ -2833,7 +2969,7 @@ class GeoCanvas(FigureCanvas):
             collection = PatchCollection(patches, facecolors=facecolors,
                                        edgecolors=edgecolors, alpha=alpha,
                                        linewidths=linewidth, transform=ccrs.PlateCarree(),
-                                       label=layer_name, zorder=5)
+                                       label=layer_name)
 
             self.ax.add_collection(collection)
 
@@ -2844,6 +2980,7 @@ class GeoCanvas(FigureCanvas):
                 'visible': True,
                 'feature_count': valid_count
             }
+            self._stack_new_layer(layer_name)
 
             self.draw()
             self.layer_added.emit(layer_name)
@@ -2905,7 +3042,7 @@ class GeoCanvas(FigureCanvas):
             collection = LineCollection(line_segments, colors=colors,
                                       linewidths=linewidth, alpha=alpha,
                                       linestyles=linestyle, transform=ccrs.PlateCarree(),
-                                      label=layer_name, zorder=7)
+                                      label=layer_name)
 
             self.ax.add_collection(collection)
 
@@ -2916,6 +3053,7 @@ class GeoCanvas(FigureCanvas):
                 'visible': True,
                 'feature_count': valid_count
             }
+            self._stack_new_layer(layer_name)
 
             self.draw()
             self.layer_added.emit(layer_name)
@@ -3018,6 +3156,12 @@ class GeoCanvas(FigureCanvas):
                 if clim is not None:
                     artist.set_clim(vmin=clim[0], vmax=clim[1])
 
+            # How the image is resampled when a cell covers more than a pixel.
+            # Applied here rather than at imshow time so the symbology panel's
+            # choice reaches a layer that is already drawn.
+            if hasattr(artist, 'set_interpolation'):
+                artist.set_interpolation(style.interpolation)
+
         except Exception as e:
             logger.error("Error updating raster display: %s", e, exc_info=True)
 
@@ -3053,9 +3197,11 @@ class GeoCanvas(FigureCanvas):
 
             del self.layers[layer_name]
 
-            # Remove from layer order
+            # Remove from layer order, then respread what is left over the whole
+            # band so the stack stays evenly spaced.
             if layer_name in self.layer_order:
                 self.layer_order.remove(layer_name)
+            self._apply_layer_zorders()
 
             self.draw()
             self.layer_removed.emit(layer_name)
@@ -3185,16 +3331,18 @@ class GeoCanvas(FigureCanvas):
             logger.warning("Variable '%s' not found in dataset", variable)
             return
 
-        # Extract data based on time dimension
+        # Extract data based on time dimension. _to_spatial_slice falls back to
+        # the first time step for an out-of-range index, and takes the first
+        # entry of every non-spatial dimension the variable has besides — a
+        # level or an ensemble member would otherwise leave the array 3-D.
         time_dim_name = find_case_insensitive_key(list(ds[variable].dims), "time")
-        if time_dim_name and props.netcdf.time_dimension:
-            if time_index < ds.sizes.get(time_dim_name, 0):
-                data = ds[variable].isel({time_dim_name: time_index}).values
-            else:
-                logger.warning("Time index %s out of range", time_index)
-                data = ds[variable].values[0]  # Fallback to first time step
-        else:
-            data = ds[variable].values
+        if time_dim_name and not props.netcdf.time_dimension:
+            time_dim_name = None
+        if time_dim_name and not (0 <= time_index < ds.sizes.get(time_dim_name, 0)):
+            logger.warning("Time index %s out of range", time_index)
+        data = self._to_spatial_slice(
+            ds[variable], time_dim=time_dim_name, time_index=time_index
+        ).values
 
         # Update extent if changed. Before the data, because the redrawn branch
         # of _set_layer_array draws into whatever bounds the record carries.
@@ -3595,12 +3743,12 @@ class GeoCanvas(FigureCanvas):
         if ds is None or variable not in ds:
             return
 
-        data = ds[variable]
-
-        if self.current_time_dim in data.dims:
-            data = data.isel({self.current_time_dim: index})
-
-        data = data.values
+        # Through the same reduction the loader uses: selecting the time step
+        # alone leaves any level or ensemble dimension in place, and the 3-D
+        # array that makes crashed the application rather than the frame.
+        data = self._to_spatial_slice(
+            ds[variable], time_dim=self.current_time_dim, time_index=index
+        ).values
 
         self._set_layer_array(self.current_time_layer, layer, data)
 

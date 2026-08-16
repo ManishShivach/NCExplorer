@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QPushButton, QCheckBox, QLabel, QGroupBox, QMenu, QMessageBox,
     QFileDialog, QInputDialog, QTreeView, QComboBox, QApplication,
-    QDialog, QDialogButtonBox, QFormLayout, QTextEdit
+    QDialog, QDialogButtonBox, QFormLayout, QTextEdit, QAbstractItemView
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QDateTime
 from PyQt6.QtGui import QAction, QIcon
@@ -18,6 +18,28 @@ from ..utils import regionmask
 from .mask_dialog import MaskDialog
 
 logger = logging.getLogger(__name__)
+
+
+class LayerListWidget(QListWidget):
+    """The layer list, which the user can drag into a different order.
+
+    Qt's internal move is a remove-and-insert rather than a move, so there is no
+    rowsMoved to listen for; the drop itself is the event that says the order
+    changed. Signals are blocked across it because the re-inserted item is a new
+    QListWidgetItem built from the drag's serialised roles, and setting its check
+    state would otherwise arrive as a visibility change nobody asked for.
+    """
+
+    order_changed = pyqtSignal()
+
+    def dropEvent(self, event):
+        was_blocked = self.signalsBlocked()
+        self.blockSignals(True)
+        try:
+            super().dropEvent(event)
+        finally:
+            self.blockSignals(was_blocked)
+        self.order_changed.emit()
 
 
 class LayerManager(QWidget):
@@ -29,6 +51,8 @@ class LayerManager(QWidget):
     layer_properties_requested = pyqtSignal(str)
     layer_added = pyqtSignal(str)
     time_slider_requested = pyqtSignal(str)
+    # The whole stack, topmost first, whenever the user reorders it.
+    layer_order_changed = pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -73,11 +97,34 @@ class LayerManager(QWidget):
         filter_layout.addWidget(self.format_combo)
         layout.addWidget(filter_group)
 
-        # Layer list
-        self.layer_list = QListWidget()
+        # Layer list. Top of the list is the top of the map: the order here is
+        # the order the canvas draws in, and dragging an entry restacks the map.
+        self.layer_list = LayerListWidget()
         self.layer_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.layer_list.customContextMenuRequested.connect(self.show_context_menu)
+        self.layer_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.layer_list.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.layer_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # A drop lands between two layers; it never replaces the one under the
+        # pointer. Stated here rather than by clearing ItemIsDropEnabled on each
+        # item, because item flags are not carried across an internal move —
+        # they would hold for a layer until the first time it was dragged.
+        self.layer_list.setDragDropOverwriteMode(False)
+        self.layer_list.setToolTip("Drag a layer to restack it — the top of the "
+                                   "list draws on top of the map.")
         layout.addWidget(self.layer_list)
+
+        # Stacking controls
+        order_layout = QHBoxLayout()
+        self.move_up_btn = QPushButton("▲ Up")
+        self.move_up_btn.setToolTip("Draw the selected layer one place higher")
+        self.move_up_btn.clicked.connect(self.move_selected_up)
+        self.move_down_btn = QPushButton("▼ Down")
+        self.move_down_btn.setToolTip("Draw the selected layer one place lower")
+        self.move_down_btn.clicked.connect(self.move_selected_down)
+        order_layout.addWidget(self.move_up_btn)
+        order_layout.addWidget(self.move_down_btn)
+        layout.addLayout(order_layout)
 
         # Enhanced layer controls
         controls_layout = QVBoxLayout()
@@ -102,8 +149,16 @@ class LayerManager(QWidget):
         self.zoom_btn.setToolTip("Zoom to layer extent")
         self.zoom_btn.clicked.connect(self.zoom_to_selected)
 
+        # Opacity and the colour scale are symbology, and symbology lives on the
+        # layer's own properties panel; this is the way there for the layer that
+        # is selected here.
+        self.symbology_btn = QPushButton("Symbology")
+        self.symbology_btn.setToolTip("Edit this layer's opacity, colormap and symbols")
+        self.symbology_btn.clicked.connect(self.show_selected_symbology)
+
         secondary_controls.addWidget(self.info_btn)
         secondary_controls.addWidget(self.zoom_btn)
+        secondary_controls.addWidget(self.symbology_btn)
 
         controls_layout.addLayout(primary_controls)
         controls_layout.addLayout(secondary_controls)
@@ -124,7 +179,140 @@ class LayerManager(QWidget):
         """Connect internal signals"""
         self.layer_list.itemChanged.connect(self.on_layer_item_changed)
         self.layer_list.itemDoubleClicked.connect(self.on_layer_item_double_clicked)
+        self.layer_list.order_changed.connect(self.commit_layer_order)
+        self.layer_list.currentItemChanged.connect(self.on_current_layer_changed)
         self.format_combo.currentTextChanged.connect(self.filter_layers)
+        self.refresh_selection_controls()
+
+    # ------------------------------------------------------------------
+    # Stacking order
+    # ------------------------------------------------------------------
+    def layer_names_top_first(self):
+        """The layer names as the list shows them: topmost layer first."""
+        names = []
+        for row in range(self.layer_list.count()):
+            name = self.layer_list.item(row).data(Qt.ItemDataRole.UserRole)
+            if name:
+                names.append(name)
+        return names
+
+    def commit_layer_order(self):
+        """Announce the list's order after the user has changed it.
+
+        ``self.layers`` is re-keyed to match, bottom layer first, because that
+        dict is what update_layer_list rebuilds the list from — leaving it alone
+        would undo the reorder the next time anything refreshed the list.
+        """
+        names = self.layer_names_top_first()
+        reordered = {name: self.layers[name] for name in reversed(names)
+                     if name in self.layers}
+        # Anything the list did not show (filtered out, or mid-load) keeps its
+        # entry rather than being dropped from the manager altogether.
+        for name, info in self.layers.items():
+            if name not in reordered:
+                reordered[name] = info
+        self.layers = reordered
+
+        # A layer dragged to either end can no longer move that way.
+        self.refresh_selection_controls()
+        self.layer_order_changed.emit(names)
+        logger.debug("Layer order is now (top first): %s", names)
+        return names
+
+    def move_selected_up(self):
+        """Move the selected layer one place up the stack."""
+        self.move_selected(-1)
+
+    def move_selected_down(self):
+        """Move the selected layer one place down the stack."""
+        self.move_selected(+1)
+
+    def move_selected(self, offset):
+        """Move the selected layer by ``offset`` rows, if there is room.
+
+        Silent rather than complaining when there is nothing to move: the two
+        buttons are disabled without a selection, and at the end of the stack
+        they are disabled in the direction that has nowhere to go.
+        """
+        row = self.layer_list.currentRow()
+        if row < 0:
+            return
+
+        target = row + offset
+        if not 0 <= target < self.layer_list.count():
+            return
+
+        # takeItem/insertItem moves the item object itself, so its check state
+        # and stored layer name travel with it and no itemChanged is emitted.
+        item = self.layer_list.takeItem(row)
+        self.layer_list.insertItem(target, item)
+        self.layer_list.setCurrentItem(item)
+        self.commit_layer_order()
+
+    def move_layer_to_row(self, layer_name, target_row):
+        """Move one named layer to a given row of the list, 0 being the top."""
+        for row in range(self.layer_list.count()):
+            if self.layer_list.item(row).data(Qt.ItemDataRole.UserRole) != layer_name:
+                continue
+            target_row = max(0, min(target_row, self.layer_list.count() - 1))
+            if target_row == row:
+                return
+            item = self.layer_list.takeItem(row)
+            self.layer_list.insertItem(target_row, item)
+            self.layer_list.setCurrentItem(item)
+            self.commit_layer_order()
+            return
+
+    def sync_order_from_canvas(self):
+        """Adopt the canvas' stacking order, topmost first.
+
+        Used after a project is restored, where the layers come back in the
+        order their files happened to load rather than the order they were
+        stacked in when the project was saved.
+        """
+        canvas = getattr(self.parent_window, 'geo_canvas', None)
+        if canvas is None or not hasattr(canvas, 'layer_stacking_order'):
+            self.update_layer_list()
+            return
+
+        ordered = [name for name in canvas.layer_stacking_order() if name in self.layers]
+        ordered += [name for name in self.layers if name not in ordered]
+        self.layers = {name: self.layers[name] for name in reversed(ordered)}
+        self.update_layer_list()
+
+    # ------------------------------------------------------------------
+    # Selection
+    # ------------------------------------------------------------------
+    def on_current_layer_changed(self, *_args):
+        """Follow the selection with the controls that act on one layer."""
+        self.refresh_selection_controls()
+
+    def selected_layer_name(self):
+        """The selected layer's name, or None when nothing is selected."""
+        item = self.layer_list.currentItem()
+        if item is None:
+            return None
+        name = item.data(Qt.ItemDataRole.UserRole)
+        return name if name in self.layers else None
+
+    def refresh_selection_controls(self):
+        """Enable the controls that need a selected layer to act on."""
+        layer_name = self.selected_layer_name()
+        has_selection = layer_name is not None
+
+        self.move_up_btn.setEnabled(has_selection and self.layer_list.currentRow() > 0)
+        self.move_down_btn.setEnabled(
+            has_selection and self.layer_list.currentRow() < self.layer_list.count() - 1
+        )
+        self.symbology_btn.setEnabled(has_selection)
+
+    def show_selected_symbology(self):
+        """Open the selected layer's properties, on its symbology."""
+        layer_name = self.selected_layer_name()
+        if layer_name is None:
+            QMessageBox.information(self, "No Selection", "Please select a layer first.")
+            return
+        self.layer_properties_requested.emit(layer_name)
 
     def add_layer_dialog(self):
         """Open the file dialog to add a new layer"""
@@ -249,9 +437,13 @@ class LayerManager(QWidget):
         return styles.get(layer_type, {'color': '#3388ff', 'alpha': 0.8})
 
     def update_layer_list(self):
-        """Refresh the entire layer list widget based on the current self.layers dict."""
+        """Refresh the entire layer list widget based on the current self.layers dict.
+
+        ``self.layers`` runs bottom of the stack first, so reversing it puts the
+        topmost layer at the top of the list — where both the drag-and-drop
+        order and the canvas' z-orders expect it.
+        """
         self.layer_list.clear()
-        # Add items in reverse order of addition (newest first)
         for layer_name in reversed(list(self.layers.keys())):
             item = QListWidgetItem(layer_name)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
@@ -259,6 +451,7 @@ class LayerManager(QWidget):
             is_visible = self.layers[layer_name].get('visible', True)
             item.setCheckState(Qt.CheckState.Checked if is_visible else Qt.CheckState.Unchecked)
             self.layer_list.addItem(item)
+        self.refresh_selection_controls()
 
     def filter_layers(self):
         """Filter layers based on selected type"""
@@ -290,7 +483,8 @@ class LayerManager(QWidget):
                 "created": QDateTime.currentDateTime()
             }
 
-            # Insert new layer at the top of the list
+            # Insert new layer at the top of the list — which is also where the
+            # canvas stacks it, so the two agree without being told to.
             item = QListWidgetItem(layer_name)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setData(Qt.ItemDataRole.UserRole, layer_name)
@@ -298,6 +492,7 @@ class LayerManager(QWidget):
             self.layer_list.insertItem(0, item)
 
             self.update_statistics()
+            self.refresh_selection_controls()
             logger.info(f"Layer '{layer_name}' added to GUI list.")
 
     def remove_layer_from_list(self, layer_name):
@@ -433,6 +628,25 @@ class LayerManager(QWidget):
                 lambda: self.set_layer_visibility(layer_name, not layer_info['visible'])
             )
             menu.addAction(visibility_action)
+
+        menu.addSeparator()
+
+        # Stacking. The single-step moves are on the buttons under the list;
+        # these two are the jumps that a drag would otherwise have to make.
+        row = self.layer_list.row(item)
+        front_action = QAction("Bring to Front", self)
+        front_action.setToolTip("Draw this layer above every other layer")
+        front_action.setEnabled(row > 0)
+        front_action.triggered.connect(lambda: self.move_layer_to_row(layer_name, 0))
+        menu.addAction(front_action)
+
+        back_action = QAction("Send to Back", self)
+        back_action.setToolTip("Draw this layer below every other layer")
+        back_action.setEnabled(row < self.layer_list.count() - 1)
+        back_action.triggered.connect(
+            lambda: self.move_layer_to_row(layer_name, self.layer_list.count() - 1)
+        )
+        menu.addAction(back_action)
 
         # Polygon layers can drive a mask over any loaded NetCDF file, so the
         # entry only appears where it means something.
@@ -747,8 +961,16 @@ class LayerManager(QWidget):
 
     def cleanup(self):
         """Cleanup method for proper resource management"""
-        if hasattr(self, '_cleanup_timer'):
-            self._cleanup_timer.stop()
+        timer = getattr(self, '_cleanup_timer', None)
+        if timer is None:
+            return
+        try:
+            timer.stop()
+        except RuntimeError:
+            # __del__ can run after Qt has already destroyed the timer along
+            # with the widget, and touching it then raises rather than being
+            # the no-op the caller wants.
+            pass
 
     def __del__(self):
         """Cleanup on destruction"""

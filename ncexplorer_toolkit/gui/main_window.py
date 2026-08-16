@@ -610,6 +610,7 @@ class NCExplorerOperatorGUI(QMainWindow):
         self.layer_manager.layer_removed.connect(self.handle_layer_removed)
         self.layer_manager.layer_properties_requested.connect(self.handle_layer_properties)
         self.layer_manager.time_slider_requested.connect(self.geo_canvas.open_time_slider)
+        self.layer_manager.layer_order_changed.connect(self.handle_layer_order_changed)
 
         # Create a file explorer dock
         self._startup_progress(0.75, "Adding the docks…")
@@ -1421,21 +1422,35 @@ class NCExplorerOperatorGUI(QMainWindow):
         ``set_netcdf_variable`` exists to do. Writing only the property left
         the picker updating a field nobody was looking at: the map, the
         statistics panel and the plot all carried on showing the old variable.
+
+        The edit goes to the layer the editor is *showing*, which is not always
+        ``current_layer``: loading a file makes the new layer current while the
+        panel still shows the old one, and every edit made after that was
+        landing on the wrong layer.
         """
-        if not self.current_layer:
+        layer_name = None
+        if hasattr(self, 'property_editor'):
+            layer_name = self.property_editor.current_layer_name
+        layer_name = layer_name or self.current_layer
+        if not layer_name:
             return
 
         if (property_name == 'netcdf.current_variable'
-                and self.current_layer in self.geo_canvas.layers):
-            self.geo_canvas.set_netcdf_variable(self.current_layer, value)
+                and layer_name in self.geo_canvas.layers):
+            self.geo_canvas.set_netcdf_variable(layer_name, value)
         else:
             # Update the layer property using the new property manager
             self.geo_canvas.property_manager.update_property(
-                self.current_layer, property_name, value
+                layer_name, property_name, value
             )
+
+        # The colour scale the colorbar describes may have just changed.
+        if property_name.startswith('style.'):
+            self.geo_canvas.colorbar_manager.refresh()
 
         if hasattr(self, 'property_editor'):
             self.property_editor.refresh_current_layer()
+        self._mark_project_dirty()
 
     def on_layer_updated(self):
         """Handle layer update completion"""
@@ -1462,6 +1477,21 @@ class NCExplorerOperatorGUI(QMainWindow):
         except Exception as e:
             error_msg = f"Failed to change layer visibility: {str(e)}"
             logger.error(error_msg)
+            self.statusBar().showMessage(error_msg, 5000)
+
+    def handle_layer_order_changed(self, layer_names):
+        """Restack the map to match the layer manager's list."""
+        try:
+            self.geo_canvas.set_layer_order(list(layer_names))
+            # Which raster is topmost may have changed, and that is the one the
+            # colorbar describes.
+            self.geo_canvas.colorbar_manager.refresh()
+            self.geo_canvas.draw_idle()
+            self._mark_project_dirty()
+            self.statusBar().showMessage("Layer order updated", 2000)
+        except Exception as e:
+            error_msg = f"Failed to restack the layers: {str(e)}"
+            logger.error(error_msg, exc_info=True)
             self.statusBar().showMessage(error_msg, 5000)
 
     def handle_layer_properties(self, layer_name):
@@ -3493,7 +3523,8 @@ class NCExplorerOperatorGUI(QMainWindow):
         canvas.clear_layers()
 
         found, missing = resolve_layers(state, path)
-        for layer, source in found:
+        stacked = []
+        for index, (layer, source) in enumerate(found):
             if not canvas.load_file(source):
                 logger.warning("Project layer '%s' could not be loaded from %s",
                                layer.name, source)
@@ -3502,6 +3533,14 @@ class NCExplorerOperatorGUI(QMainWindow):
             # the name the project stored — the file may have been renamed since.
             name = os.path.splitext(os.path.basename(source))[0]
             self._restore_layer(name, layer)
+            stacked.append((layer.zorder, index, name))
+
+        # The stored z-orders are the saved stacking order, highest on top. A
+        # project written before layers had an order of their own stored one
+        # z-order per layer *type*, so ties are broken by load order with the
+        # later layer on top — which is how those maps were drawn.
+        stacked.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+        canvas.set_layer_order([name for _zorder, _index, name in stacked])
 
         self._restore_canvas(state.canvas)
         self._restore_pipeline(state.pipeline)
@@ -3509,7 +3548,7 @@ class NCExplorerOperatorGUI(QMainWindow):
         self._restore_docks(state.ui.get("docks") or {})
 
         canvas.draw_idle()
-        self.layer_manager.update_layer_list()
+        self.layer_manager.sync_order_from_canvas()
         return missing
 
     def _restore_layer(self, name, layer):
@@ -3532,10 +3571,10 @@ class NCExplorerOperatorGUI(QMainWindow):
             # animation player and the compare panel both use.
             canvas.update_netcdf_layer(name)
 
-        record = canvas.layers.get(name) or {}
-        artist = record.get('artist')
-        if artist is not None and layer.zorder:
-            artist.set_zorder(layer.zorder)
+        # The z-order is not written onto the artist here: stacking is applied
+        # once for the whole project by _apply_project_state, from the same
+        # stored z-orders, so that the order it puts in the layer manager and
+        # the order on the map cannot disagree.
         canvas.toggle_layer(name, layer.visible)
         canvas.update_layer_display(name)
 
