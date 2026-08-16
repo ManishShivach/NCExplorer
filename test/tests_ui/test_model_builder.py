@@ -1406,3 +1406,56 @@ def test_an_illegal_wire_is_refused_out_loud_not_silently(qapp, monkeypatch):
         assert shown == [reason]
     finally:
         canvas.deleteLater()
+
+
+def test_a_toggled_checkbox_outlives_the_form_it_rebuilds(qapp, real_file):
+    """Committing from ``toggled`` must not delete the box mid-click.
+
+    "Keep this result as a file" commits from ``toggled``, and the form draws a
+    path row only when it is on — so committing it rebuilds the very form the
+    box sits in. When that rebuild destroyed the row's widgets outright, Qt
+    returned from the signal into ``QCheckBox::nextCheckState`` on freed memory
+    and the application died with SIGSEGV under
+    ``QAbstractButton::mouseReleaseEvent``. Driven through a real mouse click
+    rather than ``setChecked`` because ``setChecked`` never enters the button's
+    event handling and so cannot catch this.
+    """
+    from PyQt6 import sip
+    from PyQt6.QtCore import QPoint
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QCheckBox
+
+    from ncexplorer_toolkit.gui.main_window import NCExplorerOperatorGUI
+
+    window = NCExplorerOperatorGUI()
+    try:
+        dock = window.model_builder
+        source = dock.canvas.graph.add(SOURCE, path=real_file)
+        node = dock.canvas.add_operator("timmean")
+        dock.canvas.graph.connect(source.id, 0, node.id, 0)
+        dock.canvas.rebuild()
+        dock.parameters.show_node(node.id)
+        # The builder is its own window, so showing the main one lays nothing
+        # out here — and an unlaid-out checkbox has no rectangle for the click
+        # to land in.
+        dock.show()
+        qapp.processEvents()
+
+        boxes = [box for box in dock.parameters.findChildren(QCheckBox)
+                 if "Keep this result" in box.text() and box.isVisible()]
+        assert boxes, "the keep-output checkbox should be on an operator's form"
+        keep = boxes[0]
+
+        # Clicking the indicator, which is what a user hits.
+        QTest.mouseClick(keep, Qt.MouseButton.LeftButton, pos=QPoint(8, 10))
+
+        assert not sip.isdeleted(keep), (
+            "the checkbox was destroyed inside its own toggled handler; Qt is "
+            "about to return into it")
+        assert dock.canvas.graph.node(node.id).keep_output
+
+        # And the rebuild still happened: the path row the toggle asks for.
+        qapp.processEvents()
+        assert not sip.isdeleted(keep)
+    finally:
+        window.close()

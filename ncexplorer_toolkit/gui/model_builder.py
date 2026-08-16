@@ -790,8 +790,7 @@ class ParameterEditor(QWidget):
         """Rebuild the form for one node, or show the empty state."""
         self._node_id = node_id
         self._fields = []
-        while self._layout.rowCount():
-            self._layout.removeRow(0)
+        self._clear_rows()
 
         node = self.dock.graph.node(node_id) if node_id else None
         if node is None:
@@ -813,6 +812,40 @@ class ParameterEditor(QWidget):
             self._build_file_row(node)
         else:
             self._build_operator_rows(node)
+
+    def _clear_rows(self) -> None:
+        """Empty the form without destroying widgets that are still in use.
+
+        ``QFormLayout.removeRow`` destroys the row's widgets *immediately*, and
+        this runs from inside those very widgets: the "Keep this result" box
+        commits from ``toggled``, which ``_on_node_edited`` answers by rebuilding
+        the form that box lives in. Qt then returned into
+        ``QCheckBox::nextCheckState`` — which had only just emitted the signal —
+        holding a freed ``this``, and the process died with EXC_BAD_ACCESS below
+        ``QAbstractButton::mouseReleaseEvent``. Nothing about it was specific to
+        that one checkbox: every editor here commits from a signal Qt emits
+        mid-event, so the select combo's ``currentTextChanged`` and each
+        ``editingFinished`` (which fires on focus loss, while Qt is still walking
+        the focus change) could all free the widget under the event delivering
+        them.
+
+        ``takeRow`` unparents rather than deletes, so ``deleteLater`` can run the
+        widget down once the event still using it has unwound. They are hidden
+        first because a taken row keeps this editor as its parent, and an
+        unmanaged widget would otherwise sit on top of the rebuilt form for the
+        rest of the turn.
+        """
+        while self._layout.rowCount():
+            row = self._layout.takeRow(0)
+            for item in (row.labelItem, row.fieldItem):
+                if item is None:
+                    continue
+                widget = item.widget()
+                if widget is not None:
+                    widget.hide()
+                    widget.deleteLater()
+                elif item.layout() is not None:
+                    item.layout().deleteLater()
 
     # -- rows -----------------------------------------------------------
     def _build_file_row(self, node: ModelNode) -> None:
