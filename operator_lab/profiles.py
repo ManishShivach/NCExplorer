@@ -343,12 +343,27 @@ PARAMETER_DEFAULTS: Dict[str, str] = {
     #               parameter string, which is exactly the bug a quoting
     #               workaround would introduce
     #   ?:          the ternary
-    #   _ALL_       the template key, expanded once per input variable
+    #
+    # A fifth statement, `_ALL_ = _ALL_;`, used to be here and had to come out:
+    # **`_ALL_` segfaults CDO 2.6.3 in every form measured.** `_ALL_=_ALL_;`,
+    # `_ALL_=_ALL_*2;`, `_ALL_=_ALL_+0;`, `out=_ALL_;` and `_ALL_=random;` are
+    # each an immediate SIGSEGV, on the bundled Magics build and on the system
+    # binary alike, so it is the version and not the build.
+    #
+    # It is not an undocumented corner being poked at, which is why the crash is
+    # worth this much comment: `cdo -h expr` describes `_ALL_` itself — "The
+    # special key _ALL_ is used as a template. A statement with a template is
+    # replaced for all variable names." A user following CDO's own help crashes
+    # CDO. The application's expression editor says so now; see the note in
+    # core/expr_reference.py.
+    #
+    # This is also why `exprf`/`aexprf` were failing while `expr` passed: the
+    # inline form is just as broken, but `expr` is given "random=random*1;" by
+    # OPERATOR_PARAMETERS and so never reached the template.
     "instr": (
         f"_tmp = {SAMPLE_VARIABLE} * 2;"
         f" masked = isMissval({SAMPLE_VARIABLE}) ? 0 : _tmp;"
         f" bounded = min({SAMPLE_VARIABLE},0.5);"
-        f" _ALL_ = _ALL_;"
     ),
     "uri": "auto",
     "attrs": f"{SAMPLE_VARIABLE}@units=mm",
@@ -418,6 +433,14 @@ OPERATOR_PARAMETERS: Dict[str, Dict[str, str]] = {
     # reads as neither true nor false — ``invalid_parameter_values`` refuses it
     # before the run, which is how this was caught.
     "mrotuvb": {"noint": "true"},
+
+    # The only operator in the catalog whose *default* is a hazard. cdiwrite
+    # takes no input and generates a dataset; with no parameters it generates
+    # 972 MB of one, which used to be the sweep's single remaining failure —
+    # killed at the 256 MB output guard, having already written a quarter of a
+    # gigabyte. Bounded here rather than skipped: it runs in well under a second
+    # at this size and the point of testing it is that it runs.
+    "cdiwrite": {"grid": "r18x9", "nlevs": "1", "nvars": "1"},
 
     # --- Miscellaneous: the shared-name exceptions ---
     #
@@ -657,15 +680,17 @@ PARAMETER_FILE_CONTENT: Dict[str, str] = {
     # a syntax error to the expression parser. tee shares the parameter name but
     # only ever writes to the path, so the content it inherits does not matter.
     #
-    # The same four statements ``instr`` carries, one per line, which is the one
+    # The same statements ``instr`` carries, one per line, which is the one
     # thing the file form can do that the inline form cannot — so a script that
     # was a single line was not testing the file form at all. See the comment on
-    # PARAMETER_DEFAULTS["instr"] for why these four.
+    # PARAMETER_DEFAULTS["instr"] for why these three, and for why the `_ALL_`
+    # template that used to be the fourth is not here: it segfaults CDO 2.6.3,
+    # which is what made exprf and aexprf the only two "Killed by a signal"
+    # rows in the sweep.
     "filename": (
         f"_tmp = {SAMPLE_VARIABLE} * 2;\n"
         f"masked = isMissval({SAMPLE_VARIABLE}) ? 0 : _tmp;\n"
         f"bounded = min({SAMPLE_VARIABLE},0.5);\n"
-        f"_ALL_ = _ALL_;\n"
     ),
 }
 

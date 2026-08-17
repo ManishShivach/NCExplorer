@@ -178,6 +178,34 @@ _WANT_MONTHLY = frozenset({
 #: before this entry, and the failure was the sample rather than the operator.
 _WANT_YEARLY = frozenset({"timyearavg", "timyearmean"})
 
+#: The two Ensval operators, which need a reference file **and at least two
+#: ensemble members** — three files, where ``nin == -1`` otherwise hands out two.
+#:
+#: ``cdo ensbrs,x rfile infiles obase`` spends its first input on the reference,
+#: so the ordinary pair leaves a one-member ensemble, and the Brier score's
+#: decomposition into reliability, resolution and uncertainty is not defined
+#: over one member. CDO says so, eventually:
+#:
+#:     cdo ensbrs (Abort): Internal error - normalization constraint of
+#:                         problem not fulfilled
+#:
+#: Measured: one member aborts at every threshold tried (0.3, 0.5, 0.7, and one
+#: above the data range); two members exit 0 at all of them. So it is the member
+#: count and not the parameter, which is worth recording because the message
+#: points at neither.
+#:
+#: ``enscrps`` is here for consistency rather than for a failure — it exits 0 on
+#: one member, and a CRPS "averaged over field members" computed from a single
+#: member is a number with nothing in it. Both are validation tools; a sweep
+#: that runs them on a degenerate ensemble is not testing what they are for.
+#:
+#: This surfaced when the series gained real variation over time: with the old
+#: constant-in-time sample every timestep produced the same forecast
+#: probability, and the constraint CDO checks was satisfied trivially by a
+#: one-member ensemble. The operator was always being called wrongly; the sample
+#: was hiding it.
+_WANT_ENSEMBLE_MEMBERS = frozenset({"ensbrs", "enscrps"})
+
 #: The four daily series the climate indices are defined over, and the CDO
 #: expression that turns the existing random field into each one.
 #:
@@ -275,7 +303,9 @@ class SampleSet:
             if companion is not None:
                 return [primary, companion]
         if nin == -1:
-            return pool[:2] if len(pool) >= 2 else pool[:1]
+            # A reference file plus a real ensemble, not a reference plus one.
+            wanted = 3 if operator in _WANT_ENSEMBLE_MEMBERS else 2
+            return pool[:wanted] if len(pool) >= wanted else pool[:1]
         if nin <= len(pool):
             return pool[:nin]
         # More inputs than distinct samples: repeat the last one rather than
@@ -474,25 +504,114 @@ class SampleSet:
                    climate=_build_climate(binary, workdir, series, reuse))
 
 
+#: The two modes that give the series its variation *over time*, as
+#: ``(amplitude, radians per day)``. One cycle a year and one every ten weeks,
+#: so a two-year series carries two full turns of the first and about ten of
+#: the second — enough separation between the two eigenvalues for a solver to
+#: tell the modes apart.
+#:
+#: The amplitudes, with ``_NOISE_AMPLITUDE``, sum to 0.5, which is what keeps
+#: the field inside the [0, 1) band ``-random`` used to produce on its own. That
+#: band is load-bearing downstream: ``_CLIMATE_BASES`` turns it into Kelvin with
+#: ``-mulc,40 -addc,273.15`` and into millimetres with ``-mulc,30``, so a field
+#: that strayed negative would hand ``eca_pd`` negative rainfall.
+_SERIES_MODES = ((0.20, 0.0172), (0.15, 0.0861))
+
+#: Amplitude of the time-constant spatial noise the modes are added to.
+_NOISE_AMPLITUDE = 0.15
+
+
 def _build(binary: str, series: Path, second: Path, third: Path, levels: Path) -> None:
     """Run the four generator commands, or explain why they could not run."""
-    daily = f"-settaxis,{SERIES_START},00:00:00,1day -duplicate,{SERIES_STEPS}"
-    level_steps = f"-seltimestep,1/{LEVELS_STEPS}"
-
-    commands: List[List[str]] = [
+    for path, seed in ((series, 1), (second, 2), (third, 3)):
         # Three fields on the same grid and time axis, differing in value.
-        ["-O", "-f", "nc", *daily.split(), f"-random,{SAMPLE_GRID},1", str(series)],
-        ["-O", "-f", "nc", *daily.split(), f"-random,{SAMPLE_GRID},2", str(second)],
-        ["-O", "-f", "nc", *daily.split(), f"-random,{SAMPLE_GRID},3", str(third)],
-    ]
+        _build_series(binary, path, seed)
 
+    level_steps = f"-seltimestep,1/{LEVELS_STEPS}"
     merge: List[str] = ["-O", "-f", "nc", "merge"]
     for index, level in enumerate(SAMPLE_LEVELS, start=1):
         merge += [f"-setlevel,{level}", f"-mulc,{index}", *level_steps.split(), str(series)]
     merge.append(str(levels))
+    _run(binary, merge)
 
-    for command in commands + [merge]:
-        _run(binary, command)
+
+def _build_series(binary: str, path: Path, seed: int) -> None:
+    """One daily series that varies in space **and** in time.
+
+    The series used to be ``-duplicate,730 -random,<grid>,<seed>``: one random
+    field repeated at every timestep. That is the ``-enlarge`` trap one axis
+    over — the field varied across the grid and was *identical* at all 730
+    steps, so its variance over time was exactly zero.
+
+    The cost was not theoretical. ``cdo sub series -timmean series`` is
+    identically zero on such a series, so the anomaly companion was an all-zero
+    file, and the whole EOFs section decomposed a zero matrix: the one-sided
+    jacobi solver reported "Setting Matrix and Eigenvalues to 0 before return"
+    on every column pair and the five runnable ``eof*`` operators were reported
+    as failures. Measured against a field with real temporal structure the same
+    solver converges on the first try, so what looked like a CDO defect — and is
+    recorded as one in ``_build_eof_companions`` and in the EOFs fix plan — was
+    the sample all along.
+
+    The construction is a spatial field plus two travelling modes::
+
+        field(t, x) = 0.5 + noise(x) + Σ  a_k · sin(rate_k · t) · pattern_k(x)
+
+    ``noise`` is the old time-constant random field, kept so that nothing which
+    passed on spatial variation alone loses it. Each mode multiplies a
+    one-timestep spatial pattern by a 730-step time series, which CDO does by
+    broadcasting the shorter stream — the "Filling up stream2 by copying the
+    first timestep" notice — so no mode costs more than one extra pass. The two
+    patterns are deliberately unalike: ``-topo`` is real orography and carries
+    large smooth structure, the second is another random draw, so the leading
+    eigenvectors are distinguishable rather than two versions of the same noise.
+    """
+    scratch: List[Path] = []
+
+    def part(name: str) -> Path:
+        target = path.parent / f"_{path.stem}_{name}.nc"
+        scratch.append(target)
+        return target
+
+    try:
+        # The time-constant half, which is what the sample used to be entirely.
+        total = part("noise")
+        _run(binary, ["-O", "-f", "nc", f"-duplicate,{SERIES_STEPS}",
+                      f"-mulc,{_NOISE_AMPLITUDE * 2}", "-subc,0.5",
+                      f"-random,{SAMPLE_GRID},{seed}", str(total)])
+
+        for index, (amplitude, rate) in enumerate(_SERIES_MODES):
+            # sin over the timestep index, on the 1x1 grid -for produces. The
+            # variable -for writes is called `seq`, not `for`.
+            when = part(f"time{index}")
+            _run(binary, ["-O", "-f", "nc", f"-expr,seq={amplitude}*sin(seq*{rate});",
+                          f"-for,1,{SERIES_STEPS}", str(when)])
+
+            # -topo for the first mode, a second random draw for the rest, each
+            # normalised to roughly [-1, 1] so the amplitude above is the whole
+            # story about how far this mode moves the field.
+            where = part(f"space{index}")
+            pattern = (["-mulc,0.000125", f"-topo,{SAMPLE_GRID}"] if index == 0 else
+                       ["-mulc,2", "-subc,0.5", f"-random,{SAMPLE_GRID},{seed + 10 + index}"])
+            _run(binary, ["-O", "-f", "nc", *pattern, str(where)])
+
+            mode = part(f"mode{index}")
+            _run(binary, ["-O", "-f", "nc", "mul", f"-enlarge,{SAMPLE_GRID}",
+                          str(when), str(where), str(mode)])
+
+            combined = part(f"sum{index}")
+            _run(binary, ["-O", "-f", "nc", "add", str(total), str(mode), str(combined)])
+            total = combined
+
+        # The name and the time axis are set last, in their own pass: `add` is a
+        # two-input operator and a -setname chained in front of one is read as a
+        # third input ("No Operators with missing input left").
+        _run(binary, ["-O", "-f", "nc", f"-setname,{SAMPLE_VARIABLE}",
+                      f"-settaxis,{SERIES_START},00:00:00,1day", "-addc,0.5",
+                      str(total), str(path)])
+    finally:
+        for target in scratch:
+            target.unlink(missing_ok=True)
 
 
 #: The statistics companions, each built from the main series by the CDO
@@ -749,18 +868,23 @@ def _build_climate(binary: str, workdir: Path, series: Path,
     function exists to fix.
     """
     built: Dict[str, Path] = {}
-    daily = f"-settaxis,{SERIES_START},00:00:00,1day -duplicate,{SERIES_STEPS}"
 
     for key, expression in _CLIMATE_BASES:
         path = workdir / f"sample_climate_{key}.nc"
         if not (reuse and path.is_file()):
             # tn and tx are offsets of tg, which has to exist first; the plan is
             # ordered so it does.
-            source = (str(built["tg"]) if key in ("tn", "tx")
-                      else f"{daily} -random,{SAMPLE_GRID},11")
+            #
+            # tg and rr come off the main series rather than a random field of
+            # their own. They used to be built from `-duplicate,730 -random,…,11`,
+            # which made every climate base *constant in time* — and a climate
+            # index over a series with no temporal variation is measuring
+            # nothing, whatever it reports. `_build_series` is the one place that
+            # decides what a generated series looks like; deriving from it here
+            # means these four cannot drift away from that decision again.
+            source = str(built["tg"] if key in ("tn", "tx") else series)
             try:
-                _run(binary, ["-O", "-f", "nc", *expression,
-                              *source.split(), str(path)])
+                _run(binary, ["-O", "-f", "nc", *expression, source, str(path)])
             except SampleError as exc:
                 logger.warning("Could not build the %s climate sample: %s", key, exc)
                 continue
@@ -828,17 +952,20 @@ def _build_eof_companions(binary: str, workdir: Path, series: Path,
     about ``{n}``: a companion built to different parameters than the operator
     under test is a subtler version of the bug companions exist to prevent.
 
-    A known and deliberate consequence, recorded because it will look like a
-    regression otherwise: on the generated random sample the one-sided jacobi
-    solver does not converge over anomalies — it warns "Setting Matrix and
-    Eigenvalues to 0 before return" and returns an all-zero decomposition. The
-    ``eofs`` companion is therefore all zeros. Its *shape* is right (one field
-    per mode on the data grid), which is what ``eofcoeff`` needs to be exercised
-    at the correct arity, and the sweep checks that a call works rather than
-    that its numbers are meaningful. The zero-return itself is now reported —
-    see ``stderr_indicates_failure`` in core/nc_integration.py — so the six eof
-    operators are expected to be *reported as failing* on this sample, which is
-    the honest reading of what CDO does with it.
+    This docstring used to record, as a deliberate consequence, that the
+    one-sided jacobi solver "does not converge over anomalies" on the generated
+    sample and that the five runnable ``eof*`` operators were therefore
+    *expected* to be reported as failures. **That was wrong, and the mistake is
+    worth keeping written down.** The solver was not failing on the anomalies;
+    there were no anomalies. ``_build_series`` repeated one random field at
+    every timestep, so ``sub series -timmean series`` returned a file that was
+    identically zero, and what the warning reported was a zero matrix rather
+    than a hard decomposition. Given a series with real temporal structure the
+    same solver converges on the first attempt and all five operators pass.
+
+    The general lesson, which cost two rounds of measurement: a warning that
+    names the *solver* still has to be checked against the **input**, because
+    CDO will decompose a zero matrix without ever mentioning that it is one.
     """
     built: Dict[str, Path] = {}
     neof = PARAMETER_DEFAULTS.get("neof", "1")
