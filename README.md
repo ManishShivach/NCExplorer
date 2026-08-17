@@ -35,6 +35,7 @@ file.
 - [Building the bundled CDO yourself](#building-the-bundled-cdo-yourself)
 - [Building a standalone executable](#building-a-standalone-executable)
 - [Testing the operators](#testing-the-operators)
+- [The reference sweep](#the-reference-sweep)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Project structure](#project-structure)
 
@@ -376,6 +377,15 @@ Cartopy on Qt, with the whole map surface built rather than borrowed:
   - **The axes is rebuilt, not cleared.** `add_subplot` has not reused a subplot
     since matplotlib 3.6, so clearing stacked one more axes per switch and made
     every redraw slower than the last.
+- **A variable is flattened to two dimensions along every axis but the grid's.**
+  NOAAGlobalTemp carries a singleton `z` level between the time axis and the
+  grid, and model output can add an ensemble member; each such dimension is
+  taken at its first entry, matching what the statistics, plot and comparison
+  panels already do. A 3-D array reaching `imshow` is read as an image with one
+  colour channel per column, and the error that follows — matplotlib's "Invalid
+  shape" on the default projection, or Cartopy's "zero-size array to reduction
+  operation maximum" from inside its own warp on any other — was raised in a Qt
+  slot, which took the whole application down rather than one frame.
 - **Cartopy's boundary-polygon defect is shimmed.**
   [SciTools/cartopy#2176](https://github.com/SciTools/cartopy/issues/2176) — open
   since May 2023 and still unfixed on `main` — makes an inverted interior ring
@@ -384,9 +394,20 @@ Cartopy on Qt, with the whole map surface built rather than borrowed:
   [`cartopy_polygon_fix.py`](ncexplorer_toolkit/geocanvas/cartopy_polygon_fix.py)
   probes for the defect before patching, so a fixed Cartopy makes it a no-op
   without anyone having to remember to remove it.
-- **Layer manager** — a file-explorer-style sidebar with per-layer visibility,
-  transparency, ordering, symbology and dataset metadata. Every layer keeps its
-  own property record.
+- **Layer manager** — a file-explorer-style sidebar with per-layer visibility and
+  dataset metadata. Every layer keeps its own property record. The list is the
+  map's drawing order: the top entry draws on top, and dragging a layer, using
+  the ▲/▼ buttons or "Bring to Front"/"Send to Back" restacks the canvas to
+  match — across every layer type, rather than pinning vectors above rasters as
+  the old fixed per-type z-orders did.
+- **Symbology**, on each layer's own properties panel (the Symbology button, or
+  right-click → Properties): opacity, and then whatever that kind of layer is
+  drawn with — colormap, reverse, zero-centring, value range and interpolation
+  for a raster or NetCDF layer; colours, line width, line style and marker size
+  for a vector one. Every control writes straight through to the layer's stored
+  style, so the map follows as you edit and a saved project keeps the result.
+  Each layer holds its own colour scale, so two rasters on one map can be told
+  apart.
 - **Map furniture** — graticule (`Ctrl+G`), colorbar (`Ctrl+B`), a geodesic scale
   bar that rounds to a readable 1/2/5 × 10ⁿ figure, and a floating navigation
   cluster whose buttons call straight into the canvas API, so they and the
@@ -708,6 +729,58 @@ The workbook has five sheets: **Summary** (headline counts and the integration
 preflight), **Results** (one filterable row per operator), **Issues** (failures
 grouped by root cause), **Surfaces** (operators not reachable from all four
 pickers) and **Environment** (what was run, against what).
+
+### The reference sweep
+
+The operator counts quoted throughout this README come from one run against the
+CDO the macOS `.app` bundles, kept as two files so they can be re-checked rather
+than taken on trust:
+
+```bash
+python3 test_all_operators.py --binary ~/.local/cdo-magics/bin/cdo --json docs/sweep_1.0.0.json --excel docs/sweep_1.0.0.xlsx
+```
+
+- **`--binary ~/.local/cdo-magics/bin/cdo`** — test the MAGICS-enabled CDO that
+  [`provision_cdo_macos.sh`](provision_cdo_macos.sh) builds, rather than whatever
+  `cdo` happens to be on `PATH`. This is the difference between measuring what
+  NCExplorer ships and measuring your development machine: MAGICS is a
+  compile-time link, so against a stock Homebrew CDO the plot operators cannot
+  pass at all — CDO aborts naming the missing build. Any path is accepted; a run
+  without the flag is still a valid report, just of a different binary.
+- **`--json`** — the raw rows, including everything the workbook summarises: the
+  exact command line, return code, duration, output size and extension, and which
+  of the app's pickers offer each operator. This is the file to diff between two
+  runs — a new CDO, a changed catalog — since diffing the workbook tells you
+  nothing.
+- **`--excel`** — the workbook at a fixed, version-stamped name instead of the
+  default timestamped one, so re-running 1.0.0 replaces it in place instead of
+  leaving a pile of near-identical files.
+
+That run, on 2026-08-17 against CDO 2.6.3 from the MAGICS build, reported
+**856 passed, 0 failed, 87 skipped** of 943 — 100% of the operators that could be
+attempted, with all six preflight checks green.
+
+Skipped is not "untested": each skip carries the reason it could not be
+attempted, and they are properties of the sample data rather than of CDO — 10
+want 3D data on hybrid sigma-pressure levels, 11 read a namelist or their field
+data from stdin, 5 want a GMT colour-palette file, 3 a rotated lon/lat grid, 2 a
+HEALPix grid, 2 a CMOR table, and so on. `--include-untestable` attempts them
+anyway; most then abort or time out, and the reason lands in the report instead
+of the skip. Five of the six MAGICS operators pass on this binary; `graph` is
+skipped because it needs a single-gridpoint time series, not because it cannot
+plot.
+
+Budget for about three minutes of wall time — 168 s of that inside CDO — and
+860 MB of output written into `operator_test_output/`, pruned back to 400 MB once
+each file's size has been recorded. `--keep-large-outputs` keeps all of it.
+
+The exit code makes the sweep usable as a gate: **0** when nothing failed, **1**
+when something did, **2** when the run could not start or a preflight check
+failed. Skips never fail the run.
+
+`docs/` is git-ignored, so those two files are not in a fresh clone — the command
+above is how you produce them. Point `--json`/`--excel` somewhere else if you
+want the results tracked.
 
 The integration layer has its own tests — mocked, catalog-consistency and live —
 which are the precondition for trusting a sweep:

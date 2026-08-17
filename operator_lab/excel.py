@@ -12,13 +12,17 @@ Written with openpyxl rather than pandas: the value here is the formatting —
 frozen headers, autofilters, conditional colour, column widths that make the
 `why` column readable — and a DataFrame dump would need all of it bolted back
 on afterwards.
+
+No local path reaches the file: :func:`portable_report` rewrites them on the
+way in, for the workbook and for the JSON beside it.
 """
 from __future__ import annotations
 
 import re
+from dataclasses import fields, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List, Optional, Sequence
+from typing import Any, List, Optional, Sequence, Tuple
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -126,6 +130,83 @@ def _safe(value: Any) -> Any:
     return cleaned
 
 
+# --------------------------------------------------------------------------
+# Portable paths
+# --------------------------------------------------------------------------
+
+#: An absolute path left in free text: the file CDO named in an error, an input
+#: given with ``--input``, anything the two literal redactions below did not
+#: already anchor. Cut back to its last segment, because the directories above
+#: it describe the machine the sweep ran on and no reader of the report can use
+#: them. The lookbehind is what keeps this from eating things that only look
+#: like paths — ``https://…`` in the version banner, ``./out/abs.nc`` already
+#: rewritten by a redaction, ``K/m`` in a description, ``2026/08/17`` in a date.
+_ABSOLUTE_PATH = re.compile(r"""(?<![\w:/~.])       # not a URL, ./path or a/b
+                                /(?:[^\s/\\<>"']+/)+ # two segments at least
+                                ([^\s/\\<>"',;]+)    # the file name — all that
+                                                     # survives""", re.VERBOSE)
+
+
+def _redactions(report: RunReport) -> List[Tuple[str, str]]:
+    """The two paths every one of the 943 rows is built from, and their stand-ins.
+
+    Done as literal replacements rather than left to :data:`_ABSOLUTE_PATH`
+    because these two have a *better* answer than a bare file name: the binary
+    is the command a reader would type, and the layout under the output
+    directory is the reproducible part of a run, worth keeping.
+    """
+    pairs = [(str(report.output_dir), f"./{report.output_dir.name}")]
+    if "/" in report.cdo_binary or "\\" in report.cdo_binary:
+        pairs.append((report.cdo_binary, Path(report.cdo_binary).name))
+    # Longest first, so a redaction cannot land inside one that contains it.
+    return sorted(pairs, key=lambda pair: -len(pair[0]))
+
+
+def portable_report(report: RunReport) -> RunReport:
+    """``report`` with every local path replaced by one a reader can use.
+
+    A run records where it ran — the CDO binary's full path, the output
+    directory, and all 943 commands built from the two. That is right on the
+    machine that produced it and wrong in a file that gets shared: a report is
+    passed around, and it should not come with a tour of somebody's home
+    directory attached.
+
+    Paths under the output directory keep their shape
+    (``./operator_test_output/abs.nc``) so two runs still diff cleanly;
+    everything else is cut back to a file name. The caller's report is not
+    touched, only the copy that reaches the file — the terminal summary still
+    prints where the outputs actually are.
+    """
+    redactions = _redactions(report)
+
+    def scrub(value: str) -> str:
+        for old, new in redactions:
+            value = value.replace(old, new)
+        return _ABSOLUTE_PATH.sub(lambda match: match.group(1), value)
+
+    def portable_row(outcome: OperatorOutcome) -> OperatorOutcome:
+        # Every string field, found by reflection rather than listed: a column
+        # added later is covered without anyone having to remember this exists.
+        return replace(outcome, **{
+            item.name: scrub(getattr(outcome, item.name))
+            for item in fields(outcome)
+            if isinstance(getattr(outcome, item.name), str)
+        })
+
+    return replace(
+        report,
+        outcomes=[portable_row(outcome) for outcome in report.outcomes],
+        preflight=[replace(check, detail=scrub(check.detail))
+                   for check in report.preflight],
+        sample_description=scrub(report.sample_description),
+        output_dir=Path(scrub(str(report.output_dir))),
+        cdo_binary=scrub(report.cdo_binary),
+        cdo_version=scrub(report.cdo_version),
+        surface_errors={surface: scrub(message)
+                        for surface, message in report.surface_errors.items()},
+    )
+
+
 def write_report(report: RunReport, path: Path) -> Path:
     """Write ``report`` to ``path`` and return the path actually written.
 
@@ -133,6 +214,10 @@ def write_report(report: RunReport, path: Path) -> Path:
     awkward on macOS, so a locked target falls back to a timestamped sibling
     rather than losing the run.
     """
+    # Before anything is laid out: a workbook is the copy that leaves the
+    # machine, so it is written from paths that mean something anywhere.
+    report = portable_report(report)
+
     workbook = Workbook()
     workbook.remove(workbook.active)
 

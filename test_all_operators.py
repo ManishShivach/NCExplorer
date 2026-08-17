@@ -35,6 +35,9 @@ from operator_lab import (
     DEFAULT_TIMEOUT, FAIL, OUTPUT_BUDGET_BYTES, PASS, SKIPPED, RunReport,
     SampleError, SampleSet, default_output_dir, sweep, write_report,
 )
+# From the module that already applies it to the workbook, so the two files a
+# run produces say the same thing about where it ran.
+from operator_lab.excel import portable_report
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -181,7 +184,13 @@ def print_summary(report: RunReport, excel: Path, json_path: Optional[Path]) -> 
 
 
 def write_json(report: RunReport, path: Path) -> None:
-    """The rows as JSON, for diffing one run against another."""
+    """The rows as JSON, for diffing one run against another.
+
+    Redacted like the workbook: the file is meant to be compared against a run
+    from another machine, and absolute paths would differ in every row for a
+    reason that has nothing to do with the operators.
+    """
+    report = portable_report(report)
     payload = {
         "created_at": report.started.isoformat(timespec="seconds"),
         "cdo_binary": report.cdo_binary,
