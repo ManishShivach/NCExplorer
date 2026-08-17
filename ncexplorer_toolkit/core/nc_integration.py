@@ -76,6 +76,78 @@ _STDOUT_NOTICES = (
 )
 
 
+#: Two operators whose names CDO also uses for *global options*, where the
+#: option wins and the operator becomes unreachable by its own name.
+#:
+#: ``--sortname`` (short ``-Q``) and ``--sortparam`` are documented in
+#: ``cdo --help``. CDO's argument parser matches those names before it looks
+#: anything up in the operator table, and it matches them **without requiring
+#: the dashes** — so ``cdo sortname in out`` is read as "global option
+#: sortname, and then no operator at all":
+#:
+#:     cdo (Abort): … ^ Operator missing, <infile> is a file on disk!
+#:
+#: ``sortparam`` leaks the mechanism on the way past — ``cdi warning
+#: (cdiDefGlobal): Unsupported global key: SORTPARAM`` — which is CDI being
+#: handed the name as a global key and not recognising it.
+#:
+#: A **trailing comma** is the whole fix: ``sortname,`` is no longer an exact
+#: match for the option name, so it falls through to the operator table and the
+#: operator runs with an empty parameter list. Measured on CDO 2.6.3:
+#: ``cdo sortname, in out`` and ``cdo sortparam, in out`` both exit 0 and write
+#: their output, where the bare names abort every time.
+#:
+#: Only these two need it. ``sortcode``, ``sortlevel``, ``sorttimestamp`` and
+#: ``sortvar`` share the module and no option name, and run as they are — and
+#: ``sortvar``, which ``cdo --operators`` lists as an alias of ``sortname``, is
+#: the reason the collision is survivable at all: it is a second spelling of
+#: the same operator. ``sortparam`` has no alias, so without the comma there is
+#: no way to reach it from anywhere.
+#:
+#: Applied in ``_resolve_operator_call`` and only when the call has no
+#: parameters of its own, since a real parameter already supplies the comma.
+_OPTION_SHADOWED_OPERATORS = frozenset({"sortname", "sortparam"})
+
+
+#: The four ECA indices that CDO 2.6.3 kills itself on while writing NetCDF,
+#: and the chain step that stops it.
+#:
+#: They die on an assertion inside CDI:
+#:
+#:     Assertion failed: (month >= 1 && month <= 12 && day > 0 && day <= 31 …),
+#:     function cdfGetTimeUnits, file stream_cdf_time.c, line 88
+#:
+#: SIGABRT, no output file, and **nondeterministic** — measured over 20 identical
+#: runs, ``eca_pd`` aborted 15 times and ``eca_rr1`` 20, so a single clean run is
+#: not evidence of anything here. That is also why the membership below is a
+#: *measurement* rather than a family rule: all 62 ``eca_*``/``etccdi_*``
+#: operators were run six times each, and these four are the ones that ever
+#: aborted. Guessing the family would have been wrong in both directions —
+#: ``eca_r10mm`` and ``eca_r20mm`` are clean and sit right beside ``eca_r1mm``,
+#: which fails 6 times in 6.
+#:
+#: What it is not, each measured rather than assumed: not the input (padding the
+#: reference time, switching calendar, moving the epoch to 1850 and truncating
+#: the series all leave the rate unchanged); not the ECA family, per the 57
+#: clean operators above; and not the index calculation, because ``-f grb`` is
+#: clean 10 of 10 and only the NetCDF path dies.
+#:
+#: What singles these two out is that they set the *reference time* of their own
+#: output — ``eca_rr1`` to the data date, ``eca_pd`` to nothing at all — where
+#: every other index leaves CDI's 1955-01-01 default alone. Replacing it is the
+#: only thing that helps: chaining ``setreftime`` in front is clean 12 of 12,
+#: while a chained ``copy`` — another full pass through the same writer — still
+#: aborts 11 times in 12.
+#:
+#: The rewrite is transparent, which is why it is done silently. ``setreftime``
+#: moves the epoch and rebases the offsets against it, so the verification date
+#: the operator chose survives (``eca_rr1`` still stamps 2000-07-02) and so do
+#: the values — checked field by field against the same run written as GRIB.
+#: Only the encoding of the axis changes.
+_ASSERTION_SAFE_REFERENCE_TIME = "setreftime,2000-01-01,00:00:00,days"
+_NEEDS_REFERENCE_TIME = frozenset({"eca_pd", "eca_r1mm", "eca_rr1", "etccdi_r1mm"})
+
+
 #: The same idea on the other stream, and a worse case. These are things CDO
 #: says on **stderr** during a run that exits 0 and writes a well-formed file
 #: whose contents are not what was asked for.
@@ -1620,12 +1692,22 @@ class NCExplorerIntegration:
             tokens = parameter_tokens(operator, parameters)
 
         op_token = operator if not tokens else f"{operator},{','.join(tokens)}"
+        if not tokens and operator in _OPTION_SHADOWED_OPERATORS:
+            # A bare trailing comma, and it is load-bearing. See
+            # ``_OPTION_SHADOWED_OPERATORS``.
+            op_token = f"{operator},"
+        # Two operators are run as the inner step of a chain rather than on
+        # their own, because on their own they abort the process. See
+        # ``_NEEDS_REFERENCE_TIME``.
+        op_tokens = ([_ASSERTION_SAFE_REFERENCE_TIME, f"-{op_token}"]
+                     if operator in _NEEDS_REFERENCE_TIME else [op_token])
+
         # Global options go between the binary and the operator, which is the
         # only place CDO accepts them: ``cdo -f nc4 -z zip bitrounding,… in out``.
         # Empty for every caller that does not ask, so the command is unchanged
         # for everything that was working before.
         cmd = [self.NCExplorer_binary, *self._coerce_string_list(options),
-               op_token, *aliased_inputs, *aliased_outputs]
+               *op_tokens, *aliased_inputs, *aliased_outputs]
 
         # Recorded before the run and only for the operators that append, so a
         # failure can put the file back the size it was. See

@@ -3028,6 +3028,28 @@ _PARAM_SPECS: Dict[str, Tuple[OperatorParam, ...]] = {
         _p("sgrid", _GRID, "source grid", choices=GRID_PRESETS),
         _p("tgrid", _GRID, "target grid", choices=GRID_PRESETS),
     ),
+    # cdiwrite takes no input and invents a dataset. Left to itself it invents a
+    # very large one: `cdo cdiwrite out.nc` writes **972 MB**, which is what it
+    # is for — it is CDI's write benchmark — but it is also every megabyte a
+    # user gets for picking an unfamiliar entry out of the Miscellaneous menu to
+    # see what it does. Declaring the three keys turns that into a form with a
+    # small default in it.
+    #
+    # The keys are measured, not documented: `cdo -h cdiwrite` is "No help
+    # available for this operator!" and the positional form CDO's own test
+    # scripts use (`cdiwrite,r18x9,1,1,1`) is "Parse error!" on 2.6.3. It
+    # validates what it is given — `ntime`, `nlev` and `banana` are each
+    # "Invalid parameter key" — so these three are the whole set.
+    # cdiwrite,grid=r18x9,nlevs=1,nvars=1 writes 10 kB.
+    "cdiwrite": (
+        _kw("grid", _GRID, "grid", "r18x9", choices=GRID_PRESETS,
+            help="Grid for the generated dataset. Left unset, cdiwrite uses a "
+                 "large built-in default and writes about 972 MB."),
+        _kw("nlevs", _INT, "levels", "1",
+            help="Number of vertical levels."),
+        _kw("nvars", _INT, "variables", "1",
+            help="Number of variables."),
+    ),
     # The k-nearest-neighbour trio takes key=value pairs rather than a bare
     # grid, and every one of its six parameters is keyword-form. Measured on
     # 2.6.3 against an 18x9 source:
@@ -5428,8 +5450,7 @@ _OPERATOR_INPUTS: Dict[str, Tuple[OperatorInput, ...]] = {
     #
     # The commands go in ``field`` instead, the way ``ifthenc`` puts its
     # ``gtc,0`` recipe in the description rather than claiming a slot recipe it
-    # cannot honour. See ``_eof_note`` for the same lines in the description,
-    # and OPERATOR_FIX_PLAN.md for why widening the mechanism was not done here.
+    # cannot honour. See ``_eof_note`` for the same lines in the description.
     #
     # ``units="same_as_input1"`` on slot 1 rather than on slot 0: the check
     # compares a slot against the *first* input, so the expectation has to hang

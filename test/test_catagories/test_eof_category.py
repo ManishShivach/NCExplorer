@@ -979,20 +979,45 @@ def test_cdo_does_not_object_to_a_raw_series(samples, tmp_path):
 
 
 @cdo_required
-def test_the_zero_return_really_happens_and_is_caught(samples, tmp_path):
+def test_the_zero_return_really_happens_and_is_caught(tmp_path):
     """The worst failure in the section, re-measured end to end.
 
     Exit 0, a well-formed file, an all-zero spectrum, and the only evidence on
     stderr. This is what ``stderr_indicates_failure`` exists for, so the
     measurement and the check are asserted together.
+
+    The degenerate input is built **here** rather than taken from the shared
+    sample set, and that is the point of this version of the test. It used to
+    read ``samples["anomalies"]`` and pass — because the generated series was
+    ``-duplicate,730`` of a single random field and so had no variation over
+    time at all, which made its anomalies identically zero. The test was
+    therefore asserting that CDO fails to decompose a zero matrix while
+    appearing to measure something about the solver, and it went green for the
+    wrong reason for as long as the sample was broken.
+
+    So the zero matrix is now constructed on purpose, by the same route that
+    produced it accidentally, and the shared sample is asserted to be *unlike*
+    it in the test below.
     """
     from ncexplorer_toolkit.core.nc_integration import (
         stderr_indicates_failure, stream_notices)
 
+    # A series with spatial variation and none over time: one random field
+    # repeated. Its anomalies are exactly zero, by construction.
+    constant = tmp_path / "constant.nc"
+    subprocess.run(
+        ["cdo", "-f", "nc", "-settaxis,2000-01-01,00:00:00,1day",
+         "-duplicate,120", "-random,r36x18,1", str(constant)],
+        capture_output=True, text=True, timeout=300, check=True)
+    anomalies = tmp_path / "anom.nc"
+    subprocess.run(
+        ["cdo", "sub", str(constant), "-timmean", str(constant), str(anomalies)],
+        capture_output=True, text=True, timeout=300, check=True)
+
     spectrum = tmp_path / "ev.nc"
     out = subprocess.run(
-        ["cdo", "eof,2", samples["anomalies"], str(spectrum),
-         str(tmp_path / "eo.nc")], capture_output=True, text=True, timeout=300)
+        ["cdo", "eof,2", str(anomalies), str(spectrum), str(tmp_path / "eo.nc")],
+        capture_output=True, text=True, timeout=300)
 
     assert out.returncode == 0, "the trap is that this exits 0"
     assert "Setting Matrix and Eigenvalues to 0 before return" in out.stderr
@@ -1007,6 +1032,32 @@ def test_the_zero_return_really_happens_and_is_caught(samples, tmp_path):
     # And the app calls it what it is.
     assert stderr_indicates_failure(out.stderr) is True
     assert stream_notices(out.stdout, out.stderr)
+
+
+@cdo_required
+def test_the_generated_sample_actually_decomposes(samples, tmp_path):
+    """The sample varies over time, so ``eof`` over its anomalies is real work.
+
+    The guard on the bug the test above used to hide. Two claims, because
+    either one alone can be satisfied by a broken sample: the anomalies are not
+    all zero, and the decomposition of them does not zero itself out.
+    """
+    spread = subprocess.run(
+        ["cdo", "-s", "output", "-timmax", "-abs", samples["anomalies"]],
+        capture_output=True, text=True, timeout=120)
+    assert float(spread.stdout.split()[0]) > 0.0, \
+        "the anomaly companion is identically zero — the series has no " \
+        "variation over time, so there is nothing for eof to decompose"
+
+    out = subprocess.run(
+        ["cdo", "eof,2", samples["anomalies"], str(tmp_path / "ev.nc"),
+         str(tmp_path / "eo.nc")], capture_output=True, text=True, timeout=300)
+    assert out.returncode == 0
+    assert "Setting Matrix and Eigenvalues to 0 before return" not in out.stderr
+    maximum = subprocess.run(
+        ["cdo", "-s", "output", "-timmax", "-abs", str(tmp_path / "ev.nc")],
+        capture_output=True, text=True, timeout=120)
+    assert float(maximum.stdout.strip()) > 0.0
 
 
 @cdo_required

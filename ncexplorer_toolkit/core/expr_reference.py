@@ -165,7 +165,11 @@ EXPR_FUNCTIONS: Tuple[ExprGroup, ...] = (
 EXPR_NOTES: Tuple[str, ...] = (
     "Every statement ends in a semicolon, and there is usually more than one.",
     "_ALL_ is a template: a statement using it is repeated for every variable "
-    "in the input.",
+    "in the input — but it CRASHES CDO 2.6.3. Every form of it measured "
+    "(_ALL_=_ALL_; _ALL_=_ALL_*2; out=_ALL_; _ALL_=tas;) segfaults immediately, "
+    "on both the bundled and the system binary, and CDO's own help documents "
+    "the key without any such warning. Name the variables instead until this is "
+    "fixed upstream.",
     "A variable whose name starts with an underscore (_tmp) is temporary — it "
     "is computed and never written to the output.",
     "expr and exprf REPLACE the input variables; aexpr and aexprf APPEND to "
