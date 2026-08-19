@@ -34,7 +34,7 @@
 set -euo pipefail
 
 # --- pinned versions -------------------------------------------------------
-# CDO is pinned to the version ncexplorer_toolkit/core/cdo_operator_catalog.py
+# CDO is pinned to the version ncexplorer_toolkit/core/nc_operator_catalog.py
 # is generated against. Changing it here without regenerating that catalog will
 # put the operator schema and the binary out of step.
 CDO_VERSION="2.6.3"
@@ -187,3 +187,6 @@ echo
 echo "build.py picks this up when it is first on PATH. Either:"
 echo "    export PATH=\"$PREFIX/bin:\$PATH\" && python3 build.py"
 echo "or set NCEXPLORER_CDO=$PREFIX/bin/cdo"
+
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
