@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The format registry and the two readers behind it.
 
 The regressions worth guarding here are all *silent* ones — a file that loaded

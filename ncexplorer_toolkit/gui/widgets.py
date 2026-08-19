@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 from PyQt6.QtGui import QAction, QValidator
 from PyQt6.QtWidgets import (QHBoxLayout, QLineEdit, QMenu, QToolButton, QWidget)
 

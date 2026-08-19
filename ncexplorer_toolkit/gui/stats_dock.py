@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Statistics dock: summarise a NetCDF layer over a region of the map.
 
 Like the plot dock, every number here is computed from the **xarray dataset**,

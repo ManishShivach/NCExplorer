@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The input files a sweep runs against.
 
 The harness generates its own with CDO rather than pointing at a fixed path on

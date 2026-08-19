@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Mask a NetCDF file to a shapefile polygon.
 
 Three routes to the same idea, offered because they cost very different amounts:

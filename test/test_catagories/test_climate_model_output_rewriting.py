@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Climate model output rewriting section is one operator, and until now
 none of it was reachable.
 

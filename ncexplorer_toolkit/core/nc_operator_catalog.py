@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Auto-generated CDO 2.6.3 operator catalog with descriptions.
 
 Signatures come from ``cdo --operators``.

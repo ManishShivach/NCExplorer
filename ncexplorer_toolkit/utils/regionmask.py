@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Turning a polygon into something a grid — or CDO — can be masked with.
 
 The statistics dock and the mask dialog both have to answer the same awkward

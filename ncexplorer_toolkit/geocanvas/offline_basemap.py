@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Basemaps that work with no internet at all.
 
 Two sources live here, and neither one may ever touch the network or import

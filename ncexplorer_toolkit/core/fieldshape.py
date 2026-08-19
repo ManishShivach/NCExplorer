@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Is this file the right *kind* of field for the slot it was dropped into?
 
 ``core/units.py`` asks whether a file's numbers are in the units the operator

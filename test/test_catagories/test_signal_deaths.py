@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """A CDO that dies by signal must never be reported as a success.
 
 CDO 2.6.3 can die rather than exit. Measured on this machine: ``cdo

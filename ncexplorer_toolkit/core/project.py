@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Reading and writing ``.ncx`` project files.
 
 A project is what turns NCExplorer from a tool you set up again every morning

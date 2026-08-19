@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """One-time process-wide logging configuration.
 
 Everything in NCExplorer logs through the standard :mod:`logging` module and

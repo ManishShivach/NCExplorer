@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -4645,7 +4647,7 @@ _COMPANION_MODULES: Dict[str, Tuple[str, str, str, str, str]] = {
 
 def _companion_inputs(operator: str) -> Tuple[OperatorInput, ...]:
     """The two input slots of one companion-module operator, or () if not one."""
-    from .cdo_operator_catalog import CDO_OPERATOR_MODULES
+    from .nc_operator_catalog import CDO_OPERATOR_MODULES
 
     entry = _COMPANION_MODULES.get(CDO_OPERATOR_MODULES.get(operator, ""))
     if entry is None:
@@ -4665,7 +4667,7 @@ def _companion_inputs(operator: str) -> Tuple[OperatorInput, ...]:
 
 def _companion_note(operator: str) -> str:
     """The sentence and the example the module's own documentation carries."""
-    from .cdo_operator_catalog import CDO_OPERATOR_MODULES
+    from .nc_operator_catalog import CDO_OPERATOR_MODULES
 
     entry = _COMPANION_MODULES.get(CDO_OPERATOR_MODULES.get(operator, ""))
     if entry is None:
@@ -6281,7 +6283,7 @@ def _timestat_operators() -> "Tuple[str, ...]":
     ``_MODULE_CATEGORY`` exists: this is ~200 operators and a prefix rule over
     their names cannot separate ``ymonmean`` from ``ymonsub``.
     """
-    from .cdo_operator_catalog import CDO_OPERATOR_MODULES
+    from .nc_operator_catalog import CDO_OPERATOR_MODULES
 
     titles = {
         "Statistical values over all timesteps", "Temporal percentile",
@@ -6314,7 +6316,7 @@ _DIAGNOSTIC_TITLES = frozenset({
 
 
 def _diagnostic_operators() -> "Tuple[str, ...]":
-    from .cdo_operator_catalog import CDO_OPERATOR_MODULES
+    from .nc_operator_catalog import CDO_OPERATOR_MODULES
 
     return tuple(sorted(op for op, module in CDO_OPERATOR_MODULES.items()
                         if module in _DIAGNOSTIC_TITLES))
@@ -6327,7 +6329,7 @@ def _build_operator_options() -> Dict[str, Tuple[OperatorOption, ...]]:
         options.setdefault(op, []).append(_OPT_TIMESTAT_DATE)
     for op in _diagnostic_operators():
         options.setdefault(op, []).extend((_OPT_DIAGNOSTIC, _OPT_ASYNC_READ))
-    from .cdo_operator_catalog import CDO_OPERATOR_MODULES
+    from .nc_operator_catalog import CDO_OPERATOR_MODULES
     for op, module in CDO_OPERATOR_MODULES.items():
         if module in ("Ensemble statistics", "Ensemble validation tools",
                       "Statistical values over an ensemble"):
@@ -6947,7 +6949,7 @@ def operator_module(name: str) -> str:
     operator!" about — ``harmonic`` and ``lic`` among them, which is why neither
     can be placed by module and both fall through to Miscellaneous.
     """
-    from .cdo_operator_catalog import CDO_OPERATOR_MODULES
+    from .nc_operator_catalog import CDO_OPERATOR_MODULES
 
     return CDO_OPERATOR_MODULES.get(name, "")
 
@@ -8075,7 +8077,7 @@ def _append_statistic_notes() -> None:
     * the four operators whose output is not the input's quantity get a note
       saying so.
     """
-    from .cdo_operator_catalog import CDO_OPERATOR_MODULES
+    from .nc_operator_catalog import CDO_OPERATOR_MODULES
 
     def note(operator: str, text: str) -> None:
         existing = _SURPRISING_DEFAULTS.get(operator, "")
@@ -8784,7 +8786,7 @@ def _build_operator_schema() -> Dict[str, OperatorSpec]:
     and this paragraph is what is left of it. See the note above
     ``OPERATOR_SIGNATURES``' former home for where its 716 entries went.
     """
-    from .cdo_operator_catalog import CDO_OPERATORS
+    from .nc_operator_catalog import CDO_OPERATORS
 
     schema: Dict[str, OperatorSpec] = {}
     for op, (nin, nout, desc) in CDO_OPERATORS.items():

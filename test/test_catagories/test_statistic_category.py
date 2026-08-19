@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Statistic section, against what CDO 2.6.3 actually accepts.
 
 Every assertion here corresponds to a command that was **run** against the

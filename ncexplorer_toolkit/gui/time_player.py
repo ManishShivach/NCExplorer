@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Animation dock: play a NetCDF layer over its time dimension.
 
 Playback drives the *existing* time-index path — ``set_netcdf_time_index``

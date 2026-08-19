@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Running the operators and recording what happened.
 
 Every invocation goes through :meth:`NCExplorerIntegration.prepare_operator_run`

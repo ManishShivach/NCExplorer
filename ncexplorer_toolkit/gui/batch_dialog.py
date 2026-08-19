@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The dialog that points a recorded pipeline at a folder full of files.
 
 Setup and report live in one window rather than in a wizard: the table that

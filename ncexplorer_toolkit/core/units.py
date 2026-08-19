@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Does this file hold what the operator is about to assume it holds?
 
 The climate indices are the reason this module exists. Their documentation is

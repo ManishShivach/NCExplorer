@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Miscellaneous section builds tokens CDO accepts, and says what it needs.
 
 Four problems, and the first is the one that made the rest worth chasing.

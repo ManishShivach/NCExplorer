@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """What the harness knows about an operator before it runs it.
 
 Three questions, none of which ``cdo --operators`` answers:

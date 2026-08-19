@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Persistence of the recently-opened file list.
 
 ``QSettings`` is the store, which puts two requirements on the caller:

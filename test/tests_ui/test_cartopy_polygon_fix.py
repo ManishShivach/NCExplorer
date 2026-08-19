@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The cartopy boundary-polygon repair, and the two warnings beside it.
 
 The defect being pinned here is SciTools/cartopy#2176: projecting a polygon

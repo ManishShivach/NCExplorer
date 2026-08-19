@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Central keyboard-shortcut registry and the cheat-sheet dialog.
 
 Every binding in the application is declared once in ``SHORTCUTS`` and installed

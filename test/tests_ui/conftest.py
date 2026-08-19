@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Headless Qt test setup.
 
 The suite runs with no display: ``QT_QPA_PLATFORM=offscreen python -m pytest tests/``.

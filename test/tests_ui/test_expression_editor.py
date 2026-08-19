@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Expr language gets an editor, and what it produces reaches argv intact.
 
 ``expr``/``aexpr``/``exprf``/``aexprf`` are seventeen operators, ~70 intrinsic

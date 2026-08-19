@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The application's visual identity: the app icon and the splash artwork.
 
 Two PNGs are the whole of it, and they live in ``assest/`` at the repository

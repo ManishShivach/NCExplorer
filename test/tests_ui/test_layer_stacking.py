@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Layer stacking order.
 
 The claim under test is that the map draws its layers in the order the layer

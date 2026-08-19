@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Canvas zoom/pan arithmetic, clamping, and zoom-history behaviour."""
 
 from types import SimpleNamespace

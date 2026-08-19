@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Session panel: what was run, exported as something that runs elsewhere.
 
 The panel listens to :class:`~.execution_controller.ExecutionController` rather

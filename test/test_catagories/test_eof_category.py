@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The EOFs section says what it needs, what it returns, and when it failed.
 
 Four problems, and the first one is not about the EOFs section at all.

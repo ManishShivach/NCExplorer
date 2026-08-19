@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Calendar-aware display labels for a NetCDF time dimension.
 
 NCExplorer opens every dataset with ``decode_times=False``, so a time axis stays

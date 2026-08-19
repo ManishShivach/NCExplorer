@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Tests for the CDO integration layer itself.
 
 Three layers, cheapest first:
@@ -37,7 +39,7 @@ from ncexplorer_toolkit.core.categories import (
     OPERATOR_SCHEMA, ParamKind, get_operator_spec,
     operator_required_param_count, operator_total_param_count,
 )
-from ncexplorer_toolkit.core.cdo_operator_catalog import CDO_OPERATORS
+from ncexplorer_toolkit.core.nc_operator_catalog import CDO_OPERATORS
 from ncexplorer_toolkit.core.nc_integration import (
     NCExplorerError, NCExplorerIntegration, NCExplorerResult,
     create_native_NCExplorer, create_NCExplorer_integration,

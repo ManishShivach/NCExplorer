@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Floating navigation cluster drawn over the bottom-right of the map.
 
 The overlay is a plain child widget of the GeoCanvas rather than something in a

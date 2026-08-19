@@ -1,5 +1,8 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
+
 #!/usr/bin/env python3
-"""Regenerate ``CDO_OPERATOR_MODULES`` in ``core/cdo_operator_catalog.py``.
+"""Regenerate ``CDO_OPERATOR_MODULES`` in ``core/nc_operator_catalog.py``.
 
 CDO groups its operators into modules, and the grouping is the only authority on
 which operators belong together: ``ymonsub`` is arithmetic and ``ymonmean`` is a
@@ -37,7 +40,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-CATALOG = Path(__file__).resolve().parent / "ncexplorer_toolkit" / "core" / "cdo_operator_catalog.py"
+CATALOG = Path(__file__).resolve().parent / "ncexplorer_toolkit" / "core" / "nc_operator_catalog.py"
 
 #: Start and end of the generated block, so the hand-written parts of the
 #: catalog and the descriptions above it are never touched.

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The model builder: a canvas for wiring operators together before running them.
 
 Everything structural lives in ``core/model.py``; this module is the front end

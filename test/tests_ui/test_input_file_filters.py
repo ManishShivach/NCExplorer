@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The file chooser offers what CDO reads in *that* slot, and nothing else.
 
 Every Browse button in the operator form used to open the same dialog, built

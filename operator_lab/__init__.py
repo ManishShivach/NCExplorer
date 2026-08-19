@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Bulk testing for the CDO integration and its 943 operators.
 
 One harness, three front ends: ``testCDOcommands.py`` (pick operators, press

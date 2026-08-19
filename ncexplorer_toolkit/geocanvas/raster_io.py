@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Reading raster files for the canvas: subdatasets, CRS, and honest refusals.
 
 ``GeoCanvas.load_raster`` opened the path, checked ``src.count``, read band 1

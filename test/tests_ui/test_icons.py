@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Category icons: mapped, present on disk, and actually rendering pixels."""
 
 from pathlib import Path

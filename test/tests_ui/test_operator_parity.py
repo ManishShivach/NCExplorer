@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The three operator surfaces offer the same operators, and only real ones.
 
 The toolbar menus, the command palette (Ctrl+K) and the model builder palette

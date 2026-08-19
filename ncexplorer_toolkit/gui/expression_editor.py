@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """A real editor for the ``expr`` family, opened from the ``instr`` field.
 
 ``expr``/``aexpr``/``exprf``/``aexprf`` are an entire expression language —

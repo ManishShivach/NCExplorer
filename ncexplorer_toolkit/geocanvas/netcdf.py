@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """
 NetCDF-specific functionality for GeoCanvas
 """

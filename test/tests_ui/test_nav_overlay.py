@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The on-canvas navigation cluster: parenting, placement, and wiring."""
 
 from types import SimpleNamespace

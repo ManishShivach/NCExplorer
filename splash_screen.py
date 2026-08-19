@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Standalone preview of the NCExplorer startup splash.
 
 Run it to see exactly what a user sees while the application loads:

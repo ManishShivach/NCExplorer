@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
+
 #!/usr/bin/env python3
 """Run every CDO operator and write the result to an Excel workbook.
 

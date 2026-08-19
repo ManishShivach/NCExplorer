@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Conditional selection: say which file is the mask, and mean it.
 
 Three problems, all the same family.

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 from PyQt6.QtCore import Qt, QSettings, pyqtSlot
 from PyQt6.QtGui import QAction, QFont
 from PyQt6.QtWidgets import (

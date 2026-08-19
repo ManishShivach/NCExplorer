@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The added basemap providers resolve, need no key, and all reach the selector.
 
 Nothing here touches the network. What is worth pinning is that each source can

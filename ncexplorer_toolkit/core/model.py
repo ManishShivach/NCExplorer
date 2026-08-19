@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The processing graph: nodes, wires, and every rule about what makes them run.
 
 A model is what the operator form cannot express. The form runs one operator

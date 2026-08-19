@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Collapsible dock showing this session's log records.
 
 The whole point of the dock is to make the log file readable without leaving the

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Symbology tab of a layer's properties.
 
 This is where a layer's appearance is edited: its opacity and, for a raster or

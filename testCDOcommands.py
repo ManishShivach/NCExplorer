@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
+
 #!/usr/bin/env python3
 """Open the CDO operator test lab: tick operators, press Run, save the Excel.
 

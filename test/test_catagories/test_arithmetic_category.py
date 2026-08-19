@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Arithmetic section is what CDO says it is, not what the names suggest.
 
 ``_infer_category`` was a prefix cascade, and a cascade cannot tell ``ymonsub``
@@ -22,7 +24,7 @@ from ncexplorer_toolkit.core.categories import (
     NCExplorerCategory, OPERATOR_CATEGORIES, OPERATOR_SCHEMA, _MODULE_CATEGORY,
     menu_operators, operator_module,
 )
-from ncexplorer_toolkit.core.cdo_operator_catalog import (
+from ncexplorer_toolkit.core.nc_operator_catalog import (
     CDO_OPERATORS, CDO_OPERATOR_MODULES,
 )
 

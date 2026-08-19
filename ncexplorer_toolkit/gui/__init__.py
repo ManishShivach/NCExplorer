@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """GUI components: main window, menus, toolbars, validators, file explorer.
 
 Members are loaded lazily via ``__getattr__``. Importing this package by

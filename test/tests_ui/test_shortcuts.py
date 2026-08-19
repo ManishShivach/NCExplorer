@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The shortcut registry: no duplicates, no dangling callbacks, no ambiguity."""
 
 import pytest

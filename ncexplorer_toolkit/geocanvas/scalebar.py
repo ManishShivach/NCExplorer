@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Ground-distance scale bar drawn over the map.
 
 Cartopy ships no scale-bar artist, so this builds one: measure the real

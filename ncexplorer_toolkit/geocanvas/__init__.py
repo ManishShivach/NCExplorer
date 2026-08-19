@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Geospatial canvas: Cartopy-on-Qt rendering, layers, symbology.
 
 Members are loaded lazily via ``__getattr__``. Importing this package by

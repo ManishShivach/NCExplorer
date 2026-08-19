@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Guards on behaviour that existed before the navigation/icon work."""
 
 import pytest

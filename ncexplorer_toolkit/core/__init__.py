@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Core engine: CDO subprocess integration and the operator schema registry.
 
 This sub-package is intentionally light — no Qt, no Cartopy, no rasterio.

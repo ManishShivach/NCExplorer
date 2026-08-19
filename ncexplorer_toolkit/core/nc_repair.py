@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Re-runnable provisioning of CDO's plotting support on Windows.
 
 Reached three ways, all of which land here so there is one implementation:

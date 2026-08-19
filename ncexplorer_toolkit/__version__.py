@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 __version__ = "1.0.0"
 
 APP_NAME = "NCExplorer"

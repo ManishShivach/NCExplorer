@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Shared headless-Qt setup for every test directory under ``test/``.
 
 ``test/tests_ui/conftest.py`` has done this since the UI suite existed, but a

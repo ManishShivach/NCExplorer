@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Non-blocking execution of a single CDO invocation.
 
 ``NCExplorerIntegration._execute_command`` blocks on ``subprocess.run``, which

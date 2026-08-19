@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The session's operator history, and the exporters that make it reproducible.
 
 ``NCExplorerIntegration.command_history`` is not the right source for any of

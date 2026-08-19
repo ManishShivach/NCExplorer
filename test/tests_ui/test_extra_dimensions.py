@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Variables that are not simply (time, lat, lon).
 
 NOAAGlobalTemp's gridded product carries a singleton ``z`` level between the

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The schema answers the questions the deleted lookup tables used to.
 
 ``nc_integration`` carried seven category sets — INFO_OPERATORS,

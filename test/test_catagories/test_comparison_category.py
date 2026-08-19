@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Comparison section is what CDO says it is, and says what it returns.
 
 Three separate problems, all in the same four modules.

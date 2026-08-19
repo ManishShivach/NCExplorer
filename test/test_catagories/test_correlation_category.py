@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Correlation section: where it lives, what it takes, what it gives back.
 
 Four operators — ``fldcor``, ``fldcovar``, ``timcor``, ``timcovar`` — and five

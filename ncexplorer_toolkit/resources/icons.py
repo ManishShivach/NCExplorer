@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Loading of the bundled SVG glyphs for the CDO operator categories.
 
 Every icon ships in the repository under ``resources/icons``; nothing is ever

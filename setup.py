@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 from setuptools import setup, find_packages
 
 with open("README.md", "r", encoding="utf-8") as fh:

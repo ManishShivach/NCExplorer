@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Saved output must actually contain the overlays.
 
 save_map() uses bbox_inches='tight', which recomputes the figure bounds from the

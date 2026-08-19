@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The eca_* / etccdi_* declarations, checked against the installed CDO.
 
 These operators are the ones where a wrong declaration is worst. They do not

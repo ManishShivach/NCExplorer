@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The File operation section is what CDO says it is, and spells its parameters
 the way the installed binary parses them.
 
@@ -135,7 +137,7 @@ def test_the_undocumented_five_are_placed_deliberately(operator, category):
 
 
 def test_ncopy_is_the_only_one_the_binary_will_not_place():
-    from ncexplorer_toolkit.core.cdo_operator_catalog import CDO_OPERATOR_MODULES
+    from ncexplorer_toolkit.core.nc_operator_catalog import CDO_OPERATOR_MODULES
 
     assert CDO_OPERATOR_MODULES.get("ncopy", "") == ""
     for operator in set(UNDOCUMENTED) - {"ncopy"}:

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """A loaded NetCDF layer knows every variable its file holds.
 
 ``NetCDFProperties.variables`` is what the variable picker on the layer's

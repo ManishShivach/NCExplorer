@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Two-input arithmetic: say which second file, and repeat what CDO says.
 
 Two separate problems, both about the operators that take two inputs.

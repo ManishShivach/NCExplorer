@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Running a compiled model, one step at a time, without freezing the window.
 
 This is ``SessionReplay`` (``gui/session_dock.py``) generalised: a queue of

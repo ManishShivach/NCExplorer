@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Fuzzy operator search: a centred palette opened with Ctrl+K.
 
 Fourteen category menus were a workable way to reach a few dozen operators. CDO
@@ -140,7 +142,7 @@ def build_entries(integration=None) -> list[PaletteEntry]:
     case and any description ``cdo --operators`` left blank.
     """
     from ..core.categories import OPERATOR_SCHEMA
-    from ..core.cdo_operator_catalog import CDO_OPERATORS
+    from ..core.nc_operator_catalog import CDO_OPERATORS
 
     runtime: dict[str, tuple[int, int]] = {}
     runtime_descriptions: dict[str, str] = {}

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Additional tile sources for the basemap selector, beyond the original set.
 
 Every source here needs no API key and no account, so a missing or renamed one

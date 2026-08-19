@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Transformation section is spelled the way the installed binary parses it.
 
 Every claim below was measured against CDO 2.6.3 (x86_64-apple-darwin23.6.0,

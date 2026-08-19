@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Selection section's season parameter, and the grammar it actually has.
 
 ``selseas``/``selseason`` take a *list* of seasons. Declared as a ``string``

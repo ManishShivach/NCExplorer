@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Runs the selected operator without freezing the window.
 
 The main window used to call the operator straight from ``execute_operation``,

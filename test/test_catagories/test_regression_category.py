@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Regression section says how to spell it, which file is which, and when.
 
 Five operators — detrend, regres, trend, addtrend, subtrend — and four things

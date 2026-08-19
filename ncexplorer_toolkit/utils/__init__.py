@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Cross-cutting utilities used throughout NCExplorer.
 
 Currently a thin module — eager imports are fine because nothing here is heavy.

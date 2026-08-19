@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """What CDO will actually read in one file slot, and the dialog filter for it.
 
 Every "Browse" button in this app used to open the same chooser. It offered

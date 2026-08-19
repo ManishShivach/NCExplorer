@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Import/Export section is a section, and its operators can be run.
 
 CDO's 2.6.3 reference manual has one Import/Export section holding six modules
@@ -53,7 +55,7 @@ from ncexplorer_toolkit.core.categories import (
     menu_operators, missing_required_parameters, operator_module,
     parameter_tokens, reads_stdin,
 )
-from ncexplorer_toolkit.core.cdo_operator_catalog import CDO_OPERATORS
+from ncexplorer_toolkit.core.nc_operator_catalog import CDO_OPERATORS
 from ncexplorer_toolkit.core.nc_integration import NCExplorerIntegration
 from ncexplorer_toolkit.core.session_log import OperatorRequest
 

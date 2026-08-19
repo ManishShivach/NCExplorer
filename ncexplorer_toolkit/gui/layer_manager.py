@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """
 Layer Manager Widget for NCExplorer Toolkit
 Provides a user-friendly interface for managing NCExplorer layers

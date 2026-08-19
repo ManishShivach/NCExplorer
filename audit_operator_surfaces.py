@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Per-operator audit of the three surfaces that offer CDO operators.
 
 The toolbar category menus, the command palette (Ctrl+K) and the model builder

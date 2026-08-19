@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Comparison dock: two layers, one difference, three ways of looking at it.
 
 Comparing two climate files is mostly a question about grids. Two files that

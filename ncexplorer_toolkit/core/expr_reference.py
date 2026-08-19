@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The expression language ``expr``/``aexpr``/``exprf``/``aexprf`` accept.
 
 Transcribed from the CDO Expr module documentation (2.6.3) and checked against

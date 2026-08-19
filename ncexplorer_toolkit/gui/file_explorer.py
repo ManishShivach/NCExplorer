@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 import os
 from PyQt6.QtCore import pyqtSignal, QDir, QModelIndex
 from PyQt6.QtGui import QFileSystemModel

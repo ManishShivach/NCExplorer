@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Selectable map projections: the registry, the axes rebuild, and the audit.
 
 Two things are being pinned here. The first is that every entry in the registry

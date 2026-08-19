@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The map projections the canvas can be drawn in.
 
 Which projections exist, and what each one needs to be told, follows Basemap's

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
+
 # GUI Framework
 PyQt6~=6.9.0
 PyQt6_sip~=13.10.2

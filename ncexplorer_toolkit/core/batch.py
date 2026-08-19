@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Applying one recorded pipeline to a folder full of files.
 
 The unit of work here is a *job*: one input file taken through every step of the

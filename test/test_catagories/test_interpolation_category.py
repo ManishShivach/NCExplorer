@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The Interpolation section is spelled the way the installed binary parses it.
 
 This section punishes inference harder than any other in CDO, and the tests

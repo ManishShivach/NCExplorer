@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """End-to-end smoke test: the real main window, driven through every new control.
 
 Constructing NCExplorerOperatorGUI is slow (it builds the whole CDO operator

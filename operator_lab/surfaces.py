@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Where each operator can be picked from in the app.
 
 An operator can pass its CDO run and still be unreachable — filed under a

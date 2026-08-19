@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Do these two files actually go together?
 
 ``core/units.py`` asks whether one file holds what the operator will assume it

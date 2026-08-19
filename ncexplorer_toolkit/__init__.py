@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """NCExplorer toolkit — a cross-platform GUI for the Climate Data Operators.
 
 Public surface:

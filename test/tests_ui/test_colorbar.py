@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Colorbar behaviour: targeting, labelling, placement and axes hygiene."""
 
 import cartopy.crs as ccrs

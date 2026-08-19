@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The model graph: deterministic order, honest validation, exact compilation.
 
 Nothing here runs CDO. Compilation is where the logic is and it needs no

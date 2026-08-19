@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """On-map colorbar for raster / NetCDF layers.
 
 The canvas deliberately gives its GeoAxes the whole figure

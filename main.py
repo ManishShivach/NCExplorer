@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 import logging
 import sys
 import traceback
@@ -34,9 +36,9 @@ def main():
     # Also before Qt, and for a stronger reason than --version's. This is
     # invoked by the Windows installer and by its RunOnce resume step, which
     # can run before a desktop session is fully up — starting Qt there would
-    # turn a working repair into a crash. See core/cdo_repair.py.
+    # turn a working repair into a crash. See core/nc_repair.py.
     if "--repair-cdo" in sys.argv[1:]:
-        from ncexplorer_toolkit.core.cdo_repair import main as repair_main
+        from ncexplorer_toolkit.core.nc_repair import main as repair_main
         return repair_main()
 
     from PyQt6.QtCore import Qt  # noqa: F401  (kept for downstream consumers)

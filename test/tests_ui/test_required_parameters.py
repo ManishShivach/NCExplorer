@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """A required parameter left blank must never reach CDO.
 
 CDO does not abort on a missing comma-parameter. It prompts for it on stdin,

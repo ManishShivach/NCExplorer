@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Reading vector files through geopandas, with a comprehensible failure.
 
 geopandas 1.x chooses its I/O engine at call time: ``pyogrio`` first, then

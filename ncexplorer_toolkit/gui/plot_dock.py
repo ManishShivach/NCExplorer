@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Plot dock: time series and vertical profiles for a clicked map point.
 
 Every series is pulled from the **xarray dataset**, never from the rendered

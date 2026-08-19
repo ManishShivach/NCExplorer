@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The one table of file formats the canvas can put on the map.
 
 Before this module the answer was spread over five places that disagreed:

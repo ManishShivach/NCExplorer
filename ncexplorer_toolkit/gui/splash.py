@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """The startup splash: the NCExplorer wordmark with a real progress bar.
 
 Startup is slow for a reason that is not going away — Qt, then matplotlib,

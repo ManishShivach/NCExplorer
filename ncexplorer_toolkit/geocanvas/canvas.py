@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """
 Main GeoCanvas implementation for NCExplorer visualization
 """

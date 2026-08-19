@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """Colormap registry — the single source of truth for colormap choices.
 
 Everything that offers the user a colormap (the style tab's combo box, the

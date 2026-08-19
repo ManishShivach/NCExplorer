@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Manish Shivach
+# SPDX-License-Identifier: MIT
 """A compatibility shim for one defect in ``cartopy.crs``.
 
 **What upstream does wrong.** ``Projection._rings_to_multi_polygon`` turns the
